@@ -4,8 +4,7 @@ const {
   getAllPatients,
   getPatient,
   updatePatient,
-  deletePatient,
-} = require('../controller/patientController');
+  deletePatient,} = require('../controller/patientController');
 const { requireUser } = require('../middleware/auth');
 
 const router = express.Router();
