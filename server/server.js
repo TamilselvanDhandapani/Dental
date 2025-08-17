@@ -12,7 +12,9 @@ app.use(express.json());
 
 app.use('/api/auth', require('./routes/authRoutes'));
 app.use('/api/patients', require('./routes/patientRoutes'));
+app.use('/api/visits', require('./routes/visitRoutes'));
+app.use('/api/medicalhistory', require('./routes/medicalHistoryRoutes'));
+app.use('/api/analytics', require('./routes/analyticsRoutes'));
 
-app.get('/health', (_req, res) => res.json({ ok: true }));
 
 app.listen(port, () => console.log(`🚀 Server running on :${port}`));

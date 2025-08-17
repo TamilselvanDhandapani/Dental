@@ -1,27 +1,41 @@
-const express = require('express');
-const { requireUser } = require('../middleware/auth');
+const express = require("express");
+const { requireUser } = require("../middleware/auth");
 const {
   createVisit,
   listVisitsByPatient,
   getVisit,
   updateVisit,
-} = require('../controller/visitController');
+  deleteVisit,
+  getNextApptForVisit,
+  getNextApptsForVisit,
+  getOverallNextAppts,
+} = require("../controller/visitController");
 
 const router = express.Router();
 
 // All visit routes require an authenticated user (JWT via Authorization header)
 router.use(requireUser);
 
-// Create a visit for a patient
-router.post('/patients/:patientId/visits', createVisit);
+// routes/visit.routes.js (example)
 
-// List visits for a patient (most recent first)
-router.get('/patients/:patientId/visits', listVisitsByPatient);
+// Create
+router.post("/:patientId/visits", createVisit);
 
-// Get a single visit
-router.get('/visits/:visitId', getVisit);
+// Read (list + single)
+router.get("/:patientId/visits", listVisitsByPatient);
+router.get("/:visitId", getVisit);
 
-// Update a visit
-router.put('/visits/:visitId', updateVisit);
+// Update
+router.patch("/:visitId", updateVisit);
+
+// Delete
+router.delete("/:visitId", deleteVisit);
+
+// Next Appointment summary for a patient
+router.get("/:visitId/next-appt", getNextApptForVisit);
+router.get("/:visitId/next-appts", getNextApptsForVisit);
+
+// over All Appointments
+router.get("/appointments/next", getOverallNextAppts);
 
 module.exports = router;

@@ -175,16 +175,8 @@ const Login = () => {
           </motion.div>
         )}
 
-        {/* Register Link */}
-        <motion.div variants={itemVariants} className="mt-6 text-center text-gray-500">
-          Don't have an account?{' '}
-          <Link 
-            to="/register" 
-            className="text-teal-600 hover:text-teal-800 font-medium flex items-center justify-center"
-          >
-            <FaSignInAlt className="mr-1" /> Create Account
-          </Link>
-        </motion.div>
+ 
+        
       </motion.form>
     </motion.div>
   );

@@ -11,15 +11,6 @@ import ChiefComplaintExamForm from "./ChiefComplaintExamForm";
 import ProcedureTrackingForm from "./ProcedureTrackingForm";
 import ReviewSubmitPage from "./ReviewSubmitPage";
 
-/**
- * MultiStepForm
- * - Atomic state + persistence
- * - Debounced draft saves
- * - Versioned draft with migration guard
- * - Cross-tab synchronization
- * - Safer beforeunload handler
- * - Better stepper a11y
- */
 
 const DRAFT_KEY = "dentalPatientFormDraft";
 const DRAFT_VERSION = 2;
@@ -273,6 +264,13 @@ const MultiStepForm = () => {
     },
     [apply, step]
   );
+
+  useEffect(() => {
+  // scroll to top smoothly whenever step changes
+  if (typeof window !== "undefined") {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+}, [step]);
 
   // Helper to safely extract ID from server result
   const extractId = (obj) =>

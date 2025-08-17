@@ -1,9 +1,10 @@
 // src/api.js
 import { supabase } from '../CreateClient';
 
-const API_BASE ='http://localhost:5000/api';
+const API_BASE = 'http://localhost:5000/api';
 const DEFAULT_TIMEOUT_MS = 20000;
 
+/* -------------------------------- Utils ---------------------------------- */
 function buildUrl(path, query) {
   const url = new URL(`${API_BASE}${path}`);
   if (query && typeof query === 'object') {
@@ -14,9 +15,23 @@ function buildUrl(path, query) {
   return url.toString();
 }
 
-export async function authedFetch(path, { method = 'GET', body, headers, query, timeoutMs } = {}) {
+function assertId(id, label = 'id') {
+  if (!id || typeof id !== 'string') {
+    throw new Error(`Missing or invalid ${label}`);
+  }
+}
+
+/**
+ * Fetch with Supabase JWT, JSON by default, timeout, and better error messages.
+ */
+export async function authedFetch(
+  path,
+  { method = 'GET', body, headers, query, timeoutMs } = {}
+) {
   // Always grab the fresh token
-  const { data: { session } } = await supabase.auth.getSession();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
   const token = session?.access_token;
   if (!token) throw new Error('Not authenticated');
 
@@ -24,7 +39,8 @@ export async function authedFetch(path, { method = 'GET', body, headers, query, 
   const controller = new AbortController();
   const to = setTimeout(() => controller.abort(), timeoutMs ?? DEFAULT_TIMEOUT_MS);
 
-  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  const isFormData =
+    typeof FormData !== 'undefined' && body instanceof FormData;
   const url = buildUrl(path, query);
 
   try {
@@ -49,9 +65,11 @@ export async function authedFetch(path, { method = 'GET', body, headers, query, 
     if (!res.ok) {
       // Optional: auto sign out on 401
       if (res.status === 401) {
-        // await supabase.auth.signOut(); // uncomment if you want auto logout
+        // await supabase.auth.signOut();
       }
-      const msg = (isJson ? (payload?.error || payload?.message) : payload) || res.statusText;
+      const msg =
+        (isJson ? payload?.error || payload?.message : payload) ||
+        res.statusText;
       throw new Error(msg);
     }
     return isJson ? payload : { raw: payload };
@@ -63,29 +81,114 @@ export async function authedFetch(path, { method = 'GET', body, headers, query, 
   }
 }
 
-/* ---------------- Patients ---------------- */
-export const createPatient   = (data)      => authedFetch('/patients', { method: 'POST', body: data });
-export const getPatients     = (q = {})    => authedFetch('/patients', { query: q });
-export const getPatient      = (id)        => authedFetch(`/patients/${id}`);
-export const updatePatient   = (id, data)  => authedFetch(`/patients/${id}`, { method: 'PUT', body: data });
-export const deletePatient   = (id)        => authedFetch(`/patients/${id}`, { method: 'DELETE' });
+/* ------------------------------ Patients --------------------------------- */
+export const createPatient = (data) =>
+  authedFetch('/patients', { method: 'POST', body: data });
 
-/* ------------- Medical History (one per patient) ------------- */
-export const upsertMedicalHistory = (patientId, data) =>
-  authedFetch(`/patients/${patientId}/medical-history`, { method: 'PUT', body: data });
+export const getPatients = (q = {}) =>
+  authedFetch('/patients', { query: q });
 
-export const getMedicalHistory = (patientId) =>
-  authedFetch(`/patients/${patientId}/medical-history`);
+export const getPatient = (id) => {
+  assertId(id, 'patientId');
+  return authedFetch(`/patients/${id}`);
+};
 
-/* --------------------- Visits --------------------- */
-export const createVisit = (patientId, data) =>
-  authedFetch(`/patients/${patientId}/visits`, { method: 'POST', body: data });
+export const updatePatient = (id, data) => {
+  assertId(id, 'patientId');
+  return authedFetch(`/patients/${id}`, { method: 'PUT', body: data });
+};
 
-export const listVisitsByPatient = (patientId, q = {}) =>
-  authedFetch(`/patients/${patientId}/visits`, { query: q });
+export const deletePatient = (id) => {
+  assertId(id, 'patientId');
+  return authedFetch(`/patients/${id}`, { method: 'DELETE' });
+};
 
-export const getVisit = (visitId) =>
-  authedFetch(`/visits/${visitId}`);
+/* -------------------------- Medical History ------------------------------ */
 
-export const updateVisit = (visitId, data) =>
-  authedFetch(`/visits/${visitId}`, { method: 'PUT', body: data });
+export const upsertMedicalHistory = (patientId, data) => {
+  assertId(patientId, 'patientId');
+  return authedFetch(`/medicalhistory/${patientId}/medical-history`, {
+    method: 'PUT',
+    body: data,
+  });
+};
+
+export const getMedicalHistory = (patientId) => {
+  assertId(patientId, 'patientId');
+  return authedFetch(`/medicalhistory/${patientId}/medical-history`);
+};
+
+/* -------------------------------- Visits --------------------------------- */
+
+export const createVisit = (patientId, data) => {
+  assertId(patientId, 'patientId');
+  return authedFetch(`/visits/${patientId}/visits`, {
+    method: 'POST',
+    body: data,
+  });
+};
+
+export const listVisitsByPatient = (patientId, q = {}) => {
+  assertId(patientId, 'patientId');
+  return authedFetch(`/visits/${patientId}/visits`, { query: q });
+};
+
+export const getVisit = (visitId) => {
+  assertId(visitId, 'visitId');
+  return authedFetch(`/visits/${visitId}`);
+};
+
+export const updateVisit = (visitId, data) => {
+  assertId(visitId, 'visitId');
+  return authedFetch(`/visits/${visitId}`, { method: 'PATCH', body: data });
+};
+
+export const deleteVisit = (visitId) => {
+  assertId(visitId, 'visitId');
+  return authedFetch(`/visits/${visitId}`, { method: 'DELETE' });
+};
+
+/* --------------------------- Appointments (opt) --------------------------- */
+export const getNextApptForVisit = (visitId) => {
+  assertId(visitId, 'visitId');
+  return authedFetch(`/visits/${visitId}/next-appt`);
+};
+
+export const getNextApptsForVisit = (visitId) => {
+  assertId(visitId, 'visitId');
+  return authedFetch(`/visits/${visitId}/next-appts`);
+};
+
+export const getOverallNextAppts = (q = {}) =>
+  authedFetch(`/visits/appointments/next`, { query: q });
+
+/* -------------------------------- Analytics ------------------------------ */
+
+
+export const getPatientsByYear = () =>
+  authedFetch('/analytics/by-year');
+
+export const getPatientsByYearMonth = (year) =>
+  authedFetch('/analytics/by-year-month', {
+    query: year ? { year } : {},
+  });
+
+export const getPatientsByYearGender = (year) =>
+  authedFetch('/analytics/by-year-gender', {
+    query: year ? { year } : {},
+  });
+
+export const getPatientsByAgeGroup = () =>
+  authedFetch('/analytics/by-age-group');
+
+export const getVisitsByYear = () =>
+  authedFetch('/analytics/by-year');
+
+export const getVisitsByMonth = (year) =>
+  authedFetch('/analytics/by-month', {
+    query: year ? { year } : {},
+  });
+
+/* ---------------------------- Health check (opt) -------------------------- */
+// Simple ping if you want to test auth/connectivity
+export const pingApi = () => authedFetch('/health');

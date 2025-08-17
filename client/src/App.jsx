@@ -1,6 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import { supabase } from "./CreateClient";
+
 
 import Login from "./AuthPages/Login";
 import ForgotPassword from "./AuthPages/ForgotPassword";
@@ -9,12 +9,18 @@ import Register from "./AuthPages/Register";
 import VerifyOtp from "./AuthPages/VerifyOtp";
 import EmailConfirmed from "./AuthPages/EmailConfirmed";
 
-import Home from "./Page/Home";
+
 import Navbar from "./Page/Navbar";
 import Dashboard from "./components/Doctor/Dashboard";
 import MultiStepForm from "./components/Forms/MultiStepForm";
 
 import ProtectedRoute from "./ProtectedRoute";
+
+import Patients from "./components/Doctor/Patients";
+import PatientDetail from "./components/Doctor/PatientDetail";
+import VisitDetail from "./components/Doctor/VisitDetail";
+import Appointments from "./components/Doctor/Appointments";
+import Analytics from "./components/Doctor/Analytics";
 
 const App = () => {
   return (
@@ -22,8 +28,8 @@ const App = () => {
       <Navbar />
       <Routes>
         {/* Public routes */}
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
+
+        <Route path="/" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
         <Route path="/verify-otp" element={<VerifyOtp />} />
@@ -44,6 +50,46 @@ const App = () => {
           element={
             <ProtectedRoute>
               <MultiStepForm />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patients"
+          element={
+            <ProtectedRoute>
+              <Patients />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/patients/:id"
+          element={
+            <ProtectedRoute>
+              <PatientDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/visits/:visitId"
+          element={
+            <ProtectedRoute>
+              <VisitDetail />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/appointments"
+          element={
+            <ProtectedRoute>
+              <Appointments />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/analytics"
+          element={
+            <ProtectedRoute>
+              <Analytics />
             </ProtectedRoute>
           }
         />

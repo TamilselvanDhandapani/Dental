@@ -39,7 +39,54 @@ const mapVisitBodyToRow = (body = {}, { forUpdate = false } = {}) => {
 };
 
 const sbError = (res, error, status = 400) =>
-  res.status(status).json({ error: error?.message || String(error) });
+  res.status(status).json({ error: error?.message || error?.details || String(error) });
+
+/**
+ * Extract earliest upcoming nextApptDate from a visit's procedures array.
+ * Returns Date object or null.
+ */
+const getEarliestNextApptFromProcedures = (procedures) => {
+  if (!Array.isArray(procedures)) return null;
+  const today = new Date(new Date().toDateString()); // midnight today
+  const dates = procedures
+    .map(p => p?.nextApptDate)
+    .filter(Boolean)
+    .map(d => new Date(d + (String(d).length === 10 ? 'T00:00:00Z' : '')))
+    .filter(dt => !Number.isNaN(dt.getTime()) && dt >= today);
+  if (dates.length === 0) return null;
+  dates.sort((a, b) => a - b);
+  return dates[0];
+};
+
+const normalizeToDate = (d) => {
+  // Accept "YYYY-MM-DD" or full ISO strings
+  if (!d) return null;
+  const s = String(d);
+  const iso = s.length === 10 ? `${s}T00:00:00Z` : s;
+  const dt = new Date(iso);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+};
+
+/**
+ * Get patient name (first_name + last_name) with a tiny in-memory cache for batch lookups.
+ */
+const getPatientName = async (supabase, patientId, cache) => {
+  if (!patientId) return null;
+  if (cache && cache.has(patientId)) return cache.get(patientId);
+
+  const { data, error } = await supabase
+    .from('patients')
+    .select('id, first_name, last_name')
+    .eq('id', patientId)
+    .single();
+
+  let val = null;
+  if (!error && data) {
+    val = [data.first_name, data.last_name].filter(Boolean).join(' ').trim();
+  }
+  if (cache) cache.set(patientId, val);
+  return val;
+};
 
 // ---------- controllers ----------
 
@@ -85,7 +132,8 @@ const listVisitsByPatient = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
     const { patientId } = req.params;
-    const { limit = 100, offset = 0 } = req.query;
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const offset = Number(req.query.offset) || 0;
 
     // Optional: 404 if patient doesn't exist/visible
     const { data: patient, error: pErr } = await supabase
@@ -103,7 +151,7 @@ const listVisitsByPatient = async (req, res) => {
       .select('*')
       .eq('patient_id', patientId)
       .order('visit_at', { ascending: false })
-      .range(Number(offset), Number(offset) + Number(limit) - 1);
+      .range(offset, offset + limit - 1);
 
     if (error) return sbError(res, error);
     return res.json(data);
@@ -164,9 +212,208 @@ const updateVisit = async (req, res) => {
   }
 };
 
+// Delete a visit
+const deleteVisit = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    const { visitId } = req.params;
+
+    // delete and return the deleted row to distinguish 404 vs 204 easily
+    const { data, error } = await supabase
+      .from('visits')
+      .delete()
+      .eq('id', visitId)
+      .select('id')
+      .single();
+
+    if (error?.code === 'PGRST116' || (!data && !error)) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+    if (error) return sbError(res, error);
+
+    return res.status(204).send();
+  } catch (err) {
+    return sbError(res, err);
+  }
+};
+
+// Get the earliest upcoming appointment for a specific visit
+// GET /visits/:visitId/next-appt
+const getNextApptForVisit = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    const { visitId } = req.params;
+
+    // Try embedding patient (requires FK in schema cache). If not present, we'll fallback.
+    const { data: v, error } = await supabase
+      .from('visits')
+      .select('id, patient_id, chief_complaint, visit_at, procedures, patients ( first_name, last_name )')
+      .eq('id', visitId)
+      .single();
+
+    if (error?.code === 'PGRST116' || (!v && !error)) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+    if (error) return sbError(res, error);
+
+    const nextDate = getEarliestNextApptFromProcedures(v.procedures);
+    if (!nextDate) {
+      return res.status(404).json({ error: 'No upcoming appointment found' });
+    }
+
+    // Resolve patient name (embed or fallback query)
+    let patientName = [v?.patients?.first_name, v?.patients?.last_name].filter(Boolean).join(' ').trim();
+    if (!patientName) {
+      patientName = await getPatientName(supabase, v.patient_id, new Map());
+    }
+
+    return res.json({
+      patientName: patientName || 'Unknown Patient',
+      date: nextDate.toISOString().slice(0, 10), // YYYY-MM-DD
+      chiefComplaint: v.chief_complaint,
+      visitId: v.id,
+      patientId: v.patient_id,
+    });
+  } catch (err) {
+    return sbError(res, err);
+  }
+};
+
+// Get ALL upcoming appointments for a specific visit
+// GET /visits/:visitId/next-appts
+const getNextApptsForVisit = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    const { visitId } = req.params;
+
+    const { data: v, error } = await supabase
+      .from('visits')
+      .select('id, patient_id, chief_complaint, procedures, patients ( first_name, last_name )')
+      .eq('id', visitId)
+      .single();
+
+    if (error?.code === 'PGRST116' || (!v && !error)) {
+      return res.status(404).json({ error: 'Visit not found' });
+    }
+    if (error) return sbError(res, error);
+
+    const today = new Date(new Date().toDateString());
+
+    // Resolve patient name (embed or fallback)
+    let patientName = [v?.patients?.first_name, v?.patients?.last_name].filter(Boolean).join(' ').trim();
+    if (!patientName) {
+      patientName = await getPatientName(supabase, v.patient_id, new Map());
+    }
+
+    const rows = [];
+    if (Array.isArray(v.procedures)) {
+      for (const p of v.procedures) {
+        const d = p?.nextApptDate;
+        if (!d) continue;
+        const dt = new Date(d + (String(d).length === 10 ? 'T00:00:00Z' : ''));
+        if (Number.isNaN(dt.getTime()) || dt < today) continue;
+
+        rows.push({
+          patientName: patientName || 'Unknown Patient',
+          date: dt.toISOString().slice(0, 10),
+          chiefComplaint: v.chief_complaint,
+          visitId: v.id,
+          patientId: v.patient_id,
+          procedure: p?.procedure ?? null,
+        });
+      }
+    }
+
+    rows.sort((a, b) => a.date.localeCompare(b.date));
+    if (rows.length === 0) {
+      return res.status(404).json({ error: 'No upcoming appointment found' });
+    }
+    return res.json(rows);
+  } catch (err) {
+    return sbError(res, err);
+  }
+};
+
+// Get ALL upcoming appointments across all visits (visible under RLS)
+// GET /visits/appointments/next
+const getOverallNextAppts = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+
+    const limit = Math.min(Number(req.query.limit) || 100, 500);
+    const offset = Number(req.query.offset) || 0;
+
+    // Try embed; if FK not recognized in schema cache, v.patients may be undefined; we'll fallback per-row.
+    const { data: visits, error } = await supabase
+      .from('visits')
+      .select(`
+        id,
+        patient_id,
+        chief_complaint,
+        procedures,
+        patients ( first_name, last_name )
+      `);
+
+    if (error) return sbError(res, error);
+
+    const today = new Date(new Date().toDateString()); // midnight local
+    const cache = new Map(); // patientId -> name
+
+    // Flatten all future nextApptDate entries from procedures arrays
+    const rows = [];
+    for (const v of visits || []) {
+      if (!Array.isArray(v.procedures)) continue;
+
+      // Resolve patient name via embed or cached fallback
+      let patientName = [v?.patients?.first_name, v?.patients?.last_name].filter(Boolean).join(' ').trim();
+      if (!patientName) {
+        patientName = await getPatientName(supabase, v.patient_id, cache);
+      }
+
+      for (const p of v.procedures) {
+        const dt = normalizeToDate(p?.nextApptDate);
+        if (!dt) continue;
+        if (dt < today) continue;
+
+        rows.push({
+          patientName: patientName || 'Unknown Patient',
+          date: dt.toISOString().slice(0, 10),       // YYYY-MM-DD
+          chiefComplaint: v.chief_complaint || null,
+          visitId: v.id,
+          patientId: v.patient_id,
+          procedure: p?.procedure ?? null,
+        });
+      }
+    }
+
+    // Sort soonest → latest, then stable by patient/visit to keep deterministic order
+    rows.sort((a, b) =>
+      a.date.localeCompare(b.date) ||
+      String(a.patientId).localeCompare(String(b.patientId)) ||
+      String(a.visitId).localeCompare(String(b.visitId))
+    );
+
+    // Pagination in-memory (because filtering happens app-side)
+    const paged = rows.slice(offset, offset + limit);
+
+    if (paged.length === 0) {
+      // If there are absolutely no future appts at all, 404 is fine; otherwise return empty list.
+      return res.status(rows.length === 0 ? 404 : 200).json(ped);
+    }
+
+    return res.json(paged);
+  } catch (err) {
+    return sbError(res, err);
+  }
+};
+
 module.exports = {
   createVisit,
   listVisitsByPatient,
   getVisit,
   updateVisit,
+  deleteVisit,
+  getNextApptForVisit,    
+  getNextApptsForVisit,   
+  getOverallNextAppts,    
 };

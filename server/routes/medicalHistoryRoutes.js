@@ -1,4 +1,4 @@
-// routes/medicalHistory.routes.js
+
 const express = require('express');
 const { requireUser } = require('../middleware/auth');
 const { upsertMedicalHistory, getMedicalHistory } = require('../controller/medicalHistoryController');
@@ -6,7 +6,7 @@ const { upsertMedicalHistory, getMedicalHistory } = require('../controller/medic
 const router = express.Router();
 
 
-router.get('/patients/:patientId/medical-history',requireUser, getMedicalHistory);
-router.put('/patients/:patientId/medical-history',requireUser, upsertMedicalHistory);
+router.get('/:patientId/medical-history',requireUser, getMedicalHistory);
+router.put('/:patientId/medical-history',requireUser, upsertMedicalHistory);
 
 module.exports = router;
