@@ -206,24 +206,7 @@ const mapVisitRPC = (v = {}) => {
 
 /* ---------------------------- Controllers ---------------------------- */
 
-/**
- * Create patient + medical history + first visit (atomic via SQL RPC).
- *
- * Accepts either:
- *  - {
- *      firstName, lastName, dob, gender, phone, ...,
- *      medicalHistory: {...},
- *      initialVisit: { chiefComplaint, findings?, triggerFactors?, procedures?[] }
- *    }
- *
- *  OR the multi-step review shape:
- *  - {
- *      patientProfile: {...},     // merged at top-level on the client or server
- *      medicalHistory: {...},
- *      dentalExam: {...},         // chiefComplaint/duration/trigger/findings
- *      procedures: { rows: [...], summary: {...} }
- *    }
- */
+
 const createPatient = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
