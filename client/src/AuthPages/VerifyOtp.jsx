@@ -221,7 +221,7 @@ const VerifyOtp = () => {
         {/* Back to Login Link */}
         <motion.div variants={itemVariants} className="mt-6 text-center text-gray-500">
           <Link 
-            to="/login" 
+            to="/" 
             className="text-teal-600 hover:text-teal-800 font-medium flex items-center justify-center"
           >
             <FaArrowRight className="mr-1 transform rotate-180" /> Back to Login

@@ -73,7 +73,7 @@ const Login = () => {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center p-4"
+      className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center "
     >
       <motion.form
         onSubmit={onSubmit}

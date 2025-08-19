@@ -19,8 +19,9 @@ import ProtectedRoute from "./ProtectedRoute";
 import Patients from "./components/Doctor/Patients";
 import PatientDetail from "./components/Doctor/PatientDetail";
 import VisitDetail from "./components/Doctor/VisitDetail";
-import Appointments from "./components/Doctor/Appointments";
 import Analytics from "./components/Doctor/Analytics";
+import FollowUps from "./components/Doctor/FollowUps";
+import Appointments from "./components/Doctor/Appointments";
 
 const App = () => {
   return (
@@ -78,10 +79,10 @@ const App = () => {
           }
         />
         <Route
-          path="/appointments"
+          path="/followups"
           element={
             <ProtectedRoute>
-              <Appointments />
+              <FollowUps />
             </ProtectedRoute>
           }
         />
@@ -90,6 +91,14 @@ const App = () => {
           element={
             <ProtectedRoute>
               <Analytics />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/appointments"
+          element={
+            <ProtectedRoute>
+              <Appointments />
             </ProtectedRoute>
           }
         />

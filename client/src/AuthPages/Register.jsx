@@ -218,7 +218,7 @@ const Register = () => {
 
         <motion.div variants={itemVariants} className="mt-4 text-center text-gray-500">
           Already have an account?{' '}
-          <Link to="/login" className="text-teal-600 hover:text-teal-800 font-medium flex items-center justify-center">
+          <Link to="/" className="text-teal-600 hover:text-teal-800 font-medium flex items-center justify-center">
             <FaSignInAlt className="mr-1" /> Sign In
           </Link>
         </motion.div>

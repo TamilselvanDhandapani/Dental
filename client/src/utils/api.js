@@ -1,7 +1,7 @@
 // src/api.js
 import { supabase } from '../CreateClient';
 
-const API_BASE = 'https://dentalserver-6uja.onrender.com/api';
+const API_BASE = 'http://localhost:5000/api';
 const DEFAULT_TIMEOUT_MS = 20000;
 
 /* -------------------------------- Utils ---------------------------------- */
@@ -189,6 +189,30 @@ export const getVisitsByMonth = (year) =>
     query: year ? { year } : {},
   });
 
-/* ---------------------------- Health check (opt) -------------------------- */
-// Simple ping if you want to test auth/connectivity
-export const pingApi = () => authedFetch('/health');
+// Appointments API List
+
+
+export const listAppointments = (q = {}) =>
+  authedFetch('/appointments', { query: q });
+
+export const getAppointmentsByDate = (date) =>
+  authedFetch('/appointments', { query: { date } });
+
+export const getAppointmentsByRange = (from, to, extra = {}) =>
+  authedFetch('/appointments', { query: { from, to, ...extra } });
+
+export const createAppointment = (data) =>
+  authedFetch('/appointments', { method: 'POST', body: data });
+
+export const updateAppointment = (appointmentId, data) => {
+  assertId(appointmentId, 'appointmentId');
+  return authedFetch(`/appointments/${appointmentId}`, {
+    method: 'PATCH',
+    body: data,
+  });
+};
+
+export const deleteAppointment = (appointmentId) => {
+  assertId(appointmentId, 'appointmentId');
+  return authedFetch(`/appointments/${appointmentId}`, { method: 'DELETE' });
+};

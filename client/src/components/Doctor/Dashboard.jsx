@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FaUserInjured, FaUserFriends, FaCalendarAlt, FaTooth, FaChartLine, FaFileMedical, FaCog } from 'react-icons/fa';
+import { FaUserInjured, FaUserFriends, FaCalendarAlt, FaTooth, FaChartLine} from 'react-icons/fa';
+import { FaRegCalendarCheck } from "react-icons/fa6";
 import { motion } from 'framer-motion';
 
 const Dashboard = () => {
@@ -23,7 +24,7 @@ const Dashboard = () => {
       icon: <FaCalendarAlt className="text-4xl text-purple-500" />,
       title: "Follow-ups",
       description: "Manage today's schedule",
-      link: "/appointments",
+      link: "/followups",
       color: "bg-purple-50"
     },
    
@@ -32,6 +33,13 @@ const Dashboard = () => {
       title: "Statistics",
       description: "Practice analytics",
       link: "/analytics",
+      color: "bg-green-50"
+    },
+    {
+      icon: <FaRegCalendarCheck  className="text-4xl text-green-500" />,
+      title: "Appointments",
+      description: "Manage patient appointments",
+      link: "/appointments",
       color: "bg-green-50"
     },
    

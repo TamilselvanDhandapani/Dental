@@ -295,7 +295,7 @@ const ResetPassword = () => {
 
         <motion.div variants={itemVariants} className="mt-6 text-center text-gray-500">
           <Link
-            to="/login"
+            to="/"
             className="text-teal-600 hover:text-teal-800 font-medium flex items-center justify-center"
           >
             <FaArrowLeft className="mr-2" /> Back to Login

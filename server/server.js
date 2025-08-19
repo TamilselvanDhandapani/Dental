@@ -15,6 +15,7 @@ app.use('/api/patients', require('./routes/patientRoutes'));
 app.use('/api/visits', require('./routes/visitRoutes'));
 app.use('/api/medicalhistory', require('./routes/medicalHistoryRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
+app.use('/api/appointments', require('./routes/appointmentsRoutes'));
 
 
 app.listen(port, () => console.log(`🚀 Server running on :${port}`));

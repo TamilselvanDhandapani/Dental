@@ -1,293 +1,967 @@
-import React, { useEffect, useMemo, useState, useCallback } from "react";
-import { getOverallNextAppts } from "../../utils/api"; // should call /visits/appointments/next
+import { useEffect, useMemo, useState } from "react";
+import Select from "react-select";
+import {
+  // Appointments API (centralized)
+  getAppointmentsByDate as apiGetAppointmentsByDate,
+  getAppointmentsByRange as apiGetAppointmentsByRange,
+  createAppointment as apiCreateAppointment,
+  updateAppointment as apiUpdateAppointment,
+  deleteAppointment as apiDeleteAppointment,
+} from "../../utils/api";
+import { IoIosToday } from "react-icons/io";
+import { MdUpcoming, MdPendingActions, MdConfirmationNumber, MdReduceCapacity } from "react-icons/md";
 
-const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+/* ===================== CONSTANTS & HELPERS ===================== */
+const MAX_APPTS_PER_DAY = 15;
 
-const formatDateYYYYMMDDToLocal = (d) => {
-  if (!d || typeof d !== "string") return "—";
-  const parts = d.split("-");
-  if (parts.length !== 3) return "—";
-  const [y, m, day] = parts.map(Number);
-  if (!y || !m || !day) return "—";
-  const dt = new Date(Date.UTC(y, m - 1, day));
-  if (Number.isNaN(dt.getTime())) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    year: "numeric",
-    month: "short",
-    day: "2-digit",
-  }).format(dt);
+const SERVICE_TYPES = [
+  "Checkup",
+  "Cleaning",
+  "Filling",
+  "Root Canal",
+  "Extraction",
+  "Whitening",
+  "Braces Consult",
+  "Implant Consult",
+  "Crown/Bridge",
+  "Denture",
+  "Emergency",
+];
+
+const STATUSES = [
+  "Pending",
+  "Confirmed",
+  "Cancelled",
+  "Completed",
+  "No Show",
+  "Rescheduled",
+];
+
+const SLOT_DEFS = [
+  "08:00", "08:30", "09:00", "09:30",
+  "10:00", "10:30", "11:00", "11:30",
+  "12:00", "12:30", "14:30", "15:00",
+  "15:30", "16:00", "16:30",
+];
+
+const toLabel = (hhmm) => {
+  const [h, m] = hhmm.split(":").map(Number);
+  const ampm = h >= 12 ? "pm" : "am";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${m.toString().padStart(2, "0")} ${ampm}`;
 };
 
-const UpcomingAppointments = () => {
-  const [rows, setRows] = useState([]); // [{ patientName, date, chiefComplaint, procedure, visitId, patientId }]
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [pageSize, setPageSize] = useState(10);
-  const [page, setPage] = useState(0);
-  const [searchText, setSearchText] = useState("");
+const isValidPhone = (v) => /^\+?\d{10,14}$/.test(String(v || "").trim());
+const todayISO = () => new Date().toISOString().slice(0, 10);
+const iso = (d) => d.toISOString().slice(0, 10);
+const cls = (...xs) => xs.filter(Boolean).join(" ");
 
-  const offset = page * pageSize;
+const statusTint = (s) => {
+  switch (s) {
+    case "Pending": return "bg-amber-100 text-amber-800";
+    case "Confirmed": return "bg-indigo-100 text-indigo-800";
+    case "Cancelled": return "bg-rose-100 text-rose-800";
+    case "Completed": return "bg-emerald-100 text-emerald-800";
+    case "No Show": return "bg-rose-100 text-rose-800";
+    case "Rescheduled": return "bg-slate-100 text-slate-800";
+    default: return "bg-gray-100 text-gray-800";
+  }
+};
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await getOverallNextAppts({ limit: pageSize, offset });
-      setRows(Array.isArray(data) ? data : []);
-    } catch (e) {
-      const msg = String(e?.message || "").toLowerCase();
-      if (msg.includes("no upcoming") || msg.includes("not found")) {
-        setRows([]);
-      } else {
-        setError(e?.message || "Failed to load follow-ups");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [pageSize, offset]);
+const fmtDatePretty = (isoStr) =>
+  new Date(isoStr + "T00:00:00").toLocaleDateString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    weekday: "short",
+  });
+
+const cmpByDateTime = (a, b) =>
+  String(a.date).localeCompare(String(b.date)) ||
+  String(a.time_slot).localeCompare(String(b.time_slot));
+
+const startOfWeek = (d) => {
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = (day + 6) % 7; // Monday start
+  dt.setDate(dt.getDate() - diff);
+  dt.setHours(0, 0, 0, 0);
+  return dt;
+};
+const endOfWeek = (d) => {
+  const s = startOfWeek(d);
+  const e = new Date(s);
+  e.setDate(s.getDate() + 6);
+  return e;
+};
+const firstOfMonthGrid = (d) => startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1));
+const lastOfMonthGrid = (d) => endOfWeek(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+
+/* ===================== NEW APPOINTMENT MODAL ===================== */
+const NewAppointmentModal = ({
+  open,
+  onClose,
+  defaultDate,
+  onCreated,
+  dayAppointmentsForCapacity = [],
+}) => {
+  const [patientName, setPatientName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [date, setDate] = useState(defaultDate || todayISO());
+  const [slot, setSlot] = useState("");
+  const [service, setService] = useState(SERVICE_TYPES[0]);
+  const [status, setStatus] = useState("Pending");
+  const [reschedDate, setReschedDate] = useState("");
+  const [reschedTime, setReschedTime] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (open) {
+      setDate(defaultDate || todayISO());
+      setSlot("");
+      setPatientName("");
+      setPhone("");
+      setService(SERVICE_TYPES[0]);
+      setStatus("Pending");
+      setReschedDate("");
+      setReschedTime("");
+      setError("");
+    }
+  }, [open, defaultDate]);
 
-  const filtered = useMemo(() => {
-    if (!searchText) return rows;
-    const q = searchText.toLowerCase();
-    return rows.filter((r) => {
-      const patient = String(r.patientName || "").toLowerCase();
-      const cc = String(r.chiefComplaint || "").toLowerCase();
-      const proc = String(r.procedure || "").toLowerCase();
-      const pid = String(r.patientId || "").toLowerCase();
-      const vid = String(r.visitId || "").toLowerCase();
-      const dateStr = String(r.date || "");
-      return (
-        patient.includes(q) ||
-        cc.includes(q) ||
-        proc.includes(q) ||
-        pid.includes(q) ||
-        vid.includes(q) ||
-        dateStr.includes(q)
-      );
-    });
-  }, [rows, searchText]);
+  const booked = useMemo(
+    () => new Set((dayAppointmentsForCapacity || []).map((a) => a.time_slot)),
+    [dayAppointmentsForCapacity]
+  );
 
-  const canPrev = page > 0;
-  const canNext = rows.length === pageSize;
+  const remaining = Math.max(0, MAX_APPTS_PER_DAY - (dayAppointmentsForCapacity?.length || 0));
+
+  const disableSubmit =
+    !patientName.trim() ||
+    !isValidPhone(phone) ||
+    !date ||
+    !slot ||
+    (status === "Rescheduled" && (!reschedDate || !reschedTime)) ||
+    remaining <= 0 ||
+    booked.has(slot) ||
+    saving;
+
+  const serviceOptions = SERVICE_TYPES.map((type) => ({ value: type, label: type }));
+  const statusOptions = STATUSES.map((s) => ({ value: s, label: s }));
+  const reschedTimeOptions = SLOT_DEFS.map((s) => ({ value: s, label: toLabel(s) }));
+
+  const handleCreate = async (e) => {
+    e.preventDefault();
+    if (disableSubmit) return;
+    try {
+      setSaving(true);
+      const payload = {
+        patient_name: patientName.trim(),
+        phone: String(phone).trim(),
+        date,
+        time_slot: slot,
+        service_type: service,
+        status,
+        rescheduled_date: status === "Rescheduled" ? reschedDate : null,
+        rescheduled_time: status === "Rescheduled" ? reschedTime : null,
+      };
+      await apiCreateAppointment(payload);
+      onCreated?.(date);
+      onClose?.();
+    } catch (err) {
+      setError(err?.message || "Failed to create appointment");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!open) return null;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-indigo-100 py-10 px-4">
-      <div className="w-full max-w-5xl mx-auto rounded-2xl shadow-xl border border-gray-200 bg-white/80 backdrop-blur-lg overflow-hidden">
-        {/* Header */}
-        <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <span className="bg-indigo-100 text-indigo-600 rounded-full p-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M8 2v4" />
-                <path d="M16 2v4" />
-                <rect width="18" height="18" x="3" y="4" rx="2" />
-                <path d="M3 10h18" />
-              </svg>
-            </span>
-            <h2 className="text-2xl font-bold text-gray-900">
-              Upcoming Follow-ups
-            </h2>
-          </div>
-          <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-            <div className="relative w-full md:w-64">
-              <svg
-                className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <circle cx="11" cy="11" r="8" />
-                <path d="m21 21-4.3-4.3" />
-              </svg>
-              <input
-                className="w-full pl-10 pr-4 py-2 rounded-lg border border-gray-200 focus:ring-2 focus:ring-indigo-300 bg-white shadow-sm"
-                placeholder="Search patient, complaint, procedure, ID, date..."
-                value={searchText}
-                onChange={(e) => {
-                  setSearchText(e.target.value);
-                  setPage(0);
-                }}
-              />
-            </div>
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(0);
-              }}
-              className="w-full md:w-28 rounded-lg border border-gray-200 bg-white shadow-sm px-3 py-2"
-            >
-              {PAGE_SIZE_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n} / page
-                </option>
-              ))}
-            </select>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => !saving && onClose?.()} />
+      <div className="relative z-10 w-full max-w-xl bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+        <div className="bg-indigo-600 p-4 text-white">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">New Appointment</h3>
             <button
-              onClick={fetchData}
-              disabled={loading}
-              className="flex items-center justify-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition px-4 py-2"
+              type="button"
+              className="rounded-full p-1 hover:bg-indigo-500 transition-colors"
+              onClick={() => !saving && onClose?.()}
+              aria-label="Close"
             >
-              {loading ? (
-                <svg
-                  className="h-4 w-4 animate-spin"
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                </svg>
-              ) : (
-                <svg
-                  className="h-4 w-4"
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                  <path d="M3 3v5h5" />
-                  <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16" />
-                  <path d="M16 16h5v5" />
-                </svg>
-              )}
-              Refresh
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
             </button>
           </div>
+          <p className="text-indigo-100 text-sm">Max {MAX_APPTS_PER_DAY} appointments per day</p>
         </div>
 
-        {/* Content */}
         <div className="p-6">
-          <div className="overflow-x-auto rounded-lg border border-gray-100 shadow-sm">
-            <table className="w-full text-sm text-gray-700">
-              <thead>
-                <tr className="bg-indigo-50 text-indigo-700 border-b">
-                  <th className="py-3 px-4 font-semibold text-left">Date</th>
-                  <th className="py-3 px-4 font-semibold text-left">Patient</th>
-                  <th className="py-3 px-4 font-semibold text-left">Chief Complaint</th>
-                  <th className="py-3 px-4 font-semibold text-left">Procedure</th>
-                 
-                </tr>
-              </thead>
-              <tbody>
-                {loading && (
-                  <tr>
-                    <td className="py-8 text-center" colSpan={6}>
-                      <div className="flex items-center justify-center gap-2 text-indigo-500">
-                        <svg
-                          className="h-5 w-5 animate-spin"
-                          xmlns="http://www.w3.org/2000/svg"
-                          width="24"
-                          height="24"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        >
-                          <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-                        </svg>
-                        Loading...
-                      </div>
-                    </td>
-                  </tr>
-                )}
-                {!loading && filtered.length === 0 && !error && (
-                  <tr>
-                    <td className="py-10 text-center text-gray-400" colSpan={6}>
-                      No upcoming Follow-ups
-                    </td>
-                  </tr>
-                )}
-                {!loading && error && (
-                  <tr>
-                    <td className="py-10 text-center text-red-500" colSpan={6}>
-                      {error}
-                    </td>
-                  </tr>
-                )}
-                {!loading && !error && filtered.map((r) => (
-                  <tr
-                    key={`${r.visitId}-${r.date}-${r.procedure || ""}`}
-                    className="border-b last:border-0 hover:bg-indigo-50/40 transition"
-                  >
-                    <td className="py-3 px-4 whitespace-nowrap font-medium">
-                      {formatDateYYYYMMDDToLocal(r.date)}
-                    </td>
-                    <td className="py-3 px-4">
-                      {r.patientName || <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="py-3 px-4">
-                      {r.chiefComplaint || <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="py-3 px-4">
-                      {r.procedure || <span className="text-gray-400">—</span>}
-                    </td>
-                    
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {error && (
+            <div className="mb-4 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
 
-          {/* Pagination */}
-          <div className="mt-8 flex flex-col md:flex-row items-center justify-between gap-4">
-            <div className="text-sm text-gray-500">
-              Page <span className="font-semibold text-indigo-700">{page + 1}</span>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Patient Name *</label>
+                <input
+                  value={patientName}
+                  onChange={(e) => setPatientName(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                  placeholder="Full name"
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone *</label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  className={cls(
+                    "w-full rounded-lg border px-3 py-2 text-sm focus:ring-indigo-500 focus:border-indigo-500",
+                    isValidPhone(phone) || !phone ? "border-gray-300" : "border-rose-300"
+                  )}
+                  placeholder="e.g. 9876543210"
+                  required
+                />
+              </div>
             </div>
-            <div className="flex gap-2">
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Date *</label>
+                <input
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Service Type</label>
+                <Select
+                  options={serviceOptions}
+                  value={{ value: service, label: service }}
+                  onChange={(selected) => setService(selected.value)}
+                  className="react-select-container"
+                  classNamePrefix="react-select"
+                  isSearchable={false}
+                />
+              </div>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">Time Slot *</label>
+                <span className={cls("text-xs font-medium", remaining > 0 ? "text-emerald-600" : "text-rose-600")}>
+                  {remaining} slots available
+                </span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {SLOT_DEFS.map((s) => {
+                  const bookedNow = booked.has(s);
+                  const active = slot === s;
+                  return (
+                    <button
+                      type="button"
+                      key={s}
+                      onClick={() => !bookedNow && setSlot(s)}
+                      disabled={bookedNow}
+                      className={cls(
+                        "rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors",
+                        bookedNow && "cursor-not-allowed opacity-60 bg-gray-50",
+                        active
+                          ? "border-indigo-600 bg-indigo-100 text-indigo-700"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                      )}
+                    >
+                      {toLabel(s)}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <Select
+                  options={statusOptions}
+                  value={{ value: status, label: status }}
+                  onChange={(selected) => setStatus(selected.value)}
+                  className="react-select-container"
+                  classNamePrefix="react-select"
+                  isSearchable={false}
+                />
+              </div>
+              {status === "Rescheduled" && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <p className="text-xs font-medium text-slate-700 mb-2">Reschedule To</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={reschedDate}
+                      onChange={(e) => setReschedDate(e.target.value)}
+                      className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                      required
+                    />
+                    <Select
+                      options={reschedTimeOptions}
+                      value={reschedTime ? { value: reschedTime, label: toLabel(reschedTime) } : null}
+                      onChange={(selected) => setReschedTime(selected.value)}
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      placeholder="Select time"
+                      isSearchable={false}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-gray-200">
               <button
-                disabled={!canPrev || loading}
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                className="rounded-lg border border-gray-200 bg-white hover:bg-indigo-50 text-gray-700 transition px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                type="button"
+                className="rounded-lg px-4 py-2 text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+                onClick={() => !saving && onClose?.()}
               >
-                Prev
+                Cancel
               </button>
               <button
-                disabled={!canNext || loading}
-                onClick={() => setPage((p) => p + 1)}
-                className="rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                type="submit"
+                disabled={disableSubmit}
+                className={cls(
+                  "rounded-lg px-4 py-2 text-sm font-medium text-white",
+                  disableSubmit ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+                )}
               >
-                Next
+                {saving ? "Saving..." : "Create Appointment"}
               </button>
             </div>
-          </div>
+          </form>
         </div>
       </div>
     </div>
   );
 };
 
-export default UpcomingAppointments;
+/* ===================== CALENDAR & LIST VIEWS ===================== */
+const ViewToggle = ({ value, onChange }) => (
+  <div className="inline-flex rounded-md shadow-sm">
+    {["Day", "Week", "Month"].map((v) => (
+      <button
+        key={v}
+        type="button"
+        className={cls(
+          "px-3 py-1.5 text-sm font-medium border",
+          value === v
+            ? "bg-indigo-600 text-white border-indigo-600"
+            : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50",
+          v === "Day" ? "rounded-l-md" : "",
+          v === "Month" ? "rounded-r-md" : "",
+          v !== "Day" && v !== "Month" ? "border-l-0" : ""
+        )}
+        onClick={() => onChange?.(v)}
+      >
+        {v}
+      </button>
+    ))}
+  </div>
+);
+
+const CalendarHeader = ({ view, onView, date, setDate, onNew }) => {
+  const goToday = () => setDate(new Date());
+  const prev = () => {
+    const d = new Date(date);
+    if (view === "Day") d.setDate(d.getDate() - 1);
+    else if (view === "Week") d.setDate(d.getDate() - 7);
+    else d.setMonth(d.getMonth() - 1);
+    setDate(d);
+  };
+  const next = () => {
+    const d = new Date(date);
+    if (view === "Day") d.setDate(d.getDate() + 1);
+    else if (view === "Week") d.setDate(d.getDate() + 7);
+    else d.setMonth(d.getMonth() + 1);
+    setDate(d);
+  };
+
+  const title =
+    view === "Month"
+      ? date.toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+      : fmtDatePretty(iso(date));
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="flex items-center gap-2">
+        <button className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 text-gray-700" onClick={prev} title="Previous">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
+          </svg>
+        </button>
+        <button className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 text-gray-700" onClick={goToday}>
+          Today
+        </button>
+        <button className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 text-gray-700" onClick={next} title="Next">
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+          </svg>
+        </button>
+        <h3 className="ml-2 text-lg font-semibold text-gray-900">{title}</h3>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onNew}
+          className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+          title={view === "Day" ? `Book for ${fmtDatePretty(iso(date))}` : "Book appointment"}
+        >
+          New Appointment {view === "Day" ? `• ${fmtDatePretty(iso(date))}` : ""}
+        </button>
+        <ViewToggle value={view} onChange={onView} />
+      </div>
+    </div>
+  );
+};
+
+const MonthGrid = ({ date, eventsByDate, onPickDay }) => {
+  const start = firstOfMonthGrid(date);
+  const end = lastOfMonthGrid(date);
+
+  const days = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    days.push(new Date(d));
+  }
+  const dow = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+  return (
+    <div className="mt-4">
+      <div className="grid grid-cols-7 text-xs font-medium text-gray-500 mb-2">
+        {dow.map((d) => (
+          <div key={d} className="px-2 py-1 text-center">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-px bg-gray-200 rounded-lg overflow-hidden border border-gray-200">
+        {days.map((d) => {
+          const key = iso(d);
+          const list = eventsByDate.get(key) || [];
+          const inMonth = d.getMonth() === date.getMonth();
+          const isToday = key === todayISO();
+          return (
+            <button
+              key={key}
+              type="button"
+              onClick={() => onPickDay?.(key)}
+              className={cls(
+                "bg-white min-h-[100px] px-2 py-2 text-left hover:bg-indigo-50 focus:outline-none flex flex-col",
+                !inMonth && "bg-gray-50 text-gray-400",
+                isToday && "border-t-2 border-t-indigo-500"
+              )}
+            >
+              <div
+                className={cls(
+                  "text-xs font-medium self-end w-6 h-6 flex items-center justify-center rounded-full",
+                  isToday && "bg-indigo-100 text-indigo-800"
+                )}
+              >
+                {d.getDate()}
+              </div>
+              <div className="mt-1 space-y-1 overflow-hidden">
+                {list.slice(0, 3).map((e) => (
+                  <div key={e.id} className={cls("rounded px-1 py-0.5 text-[11px] truncate", statusTint(e.status))}>
+                    <span className="font-medium">{e.time_slot}</span> • {e.patient_name}
+                  </div>
+                ))}
+                {list.length > 3 && <div className="text-[11px] text-gray-500">+{list.length - 3} more</div>}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const WeekStrip = ({ date, eventsByDate, onPickDay }) => {
+  const start = startOfWeek(date);
+  const days = Array.from({ length: 7 }).map((_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    return d;
+  });
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-7 gap-3 mt-4">
+      {days.map((d) => {
+        const key = iso(d);
+        const items = (eventsByDate.get(key) || []).slice().sort(cmpByDateTime);
+        const isToday = key === todayISO();
+        return (
+          <div
+            key={key}
+            className={cls(
+              "rounded-lg border border-gray-200 bg-white p-3",
+              isToday && "border-indigo-300 bg-indigo-50"
+            )}
+          >
+            <div className="flex items-center justify-between mb-2">
+              <div>
+                <div className="text-xs text-gray-500">{d.toLocaleDateString("en-IN", { weekday: "short" })}</div>
+                <div className={cls("text-sm font-semibold", isToday ? "text-indigo-700" : "text-gray-900")}>
+                  {d.getDate()}
+                </div>
+              </div>
+              <button className="text-xs text-indigo-600 hover:underline" onClick={() => onPickDay?.(key)}>
+                View
+              </button>
+            </div>
+            <div className="space-y-1">
+              {items.length === 0 ? (
+                <div className="text-xs text-gray-400 py-2">No appointments</div>
+              ) : (
+                items.map((e) => (
+                  <div key={e.id} className={cls("rounded px-2 py-1 text-xs flex items-start", statusTint(e.status))}>
+                    <span className="font-medium mr-1">{e.time_slot}</span>
+                    <span className="truncate">{e.patient_name}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const DayPanel = ({ dateISO, items, onStatus, onDelete }) => {
+  const list = (items || []).slice().sort(cmpByDateTime);
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white mt-4">
+      <div className="border-b border-gray-200 p-4">
+        <div className="flex items-center justify-between">
+          <h4 className="text-base font-semibold text-gray-900">{fmtDatePretty(dateISO)}</h4>
+          <div className="text-sm text-gray-500">
+            <span className="font-medium">{list.length}</span>/{MAX_APPTS_PER_DAY} appointments
+          </div>
+        </div>
+      </div>
+      <div className="overflow-hidden">
+        {list.length === 0 ? (
+          <div className="p-4 text-sm text-gray-500 text-center">No appointments scheduled for this day</div>
+        ) : (
+          <div className="divide-y divide-gray-200">
+            {list.map((row) => (
+              <div key={row.id} className="p-4 hover:bg-gray-50">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center space-x-2">
+                      <span className="font-medium text-gray-900">{row.time_slot}</span>
+                      <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusTint(row.status))}>
+                        {row.status}
+                      </span>
+                    </div>
+                    <div className="mt-1">
+                      <p className="text-sm font-medium text-gray-900 truncate">{row.patient_name}</p>
+                      <p className="text-sm text-gray-500">{row.phone}</p>
+                      <p className="text-sm text-gray-500 mt-1">{row.service_type}</p>
+                    </div>
+                  </div>
+                  <div className="ml-4 flex-shrink-0 flex space-x-2">
+                    <select
+                      className="rounded-md border border-gray-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                      value={row.status}
+                      onChange={(e) => onStatus?.(row, e.target.value)}
+                    >
+                      {STATUSES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                      onClick={() => onDelete?.(row)}
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ===================== APPOINTMENTS LIST WITH TABS ===================== */
+const AppointmentsList = ({ all, onStatus, onDelete }) => {
+  const [tab, setTab] = useState("Today");
+  const t0 = todayISO();
+
+  const parsed = (all || []).slice().sort(cmpByDateTime);
+  const past = parsed.filter((r) => r.date < t0);
+  const today = parsed.filter((r) => r.date === t0);
+  const upcoming = parsed.filter((r) => r.date > t0);
+
+  const current = tab === "Past" ? past : tab === "Upcoming" ? upcoming : today;
+
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+      <div className="border-b border-gray-200">
+        <nav className="flex -mb-px">
+          {["Past", "Today", "Upcoming"].map((t) => (
+            <button
+              key={t}
+              className={cls(
+                "px-4 py-3 text-sm font-medium border-b-2",
+                tab === t
+                  ? "border-indigo-500 text-indigo-600"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+              )}
+              onClick={() => setTab(t)}
+            >
+              {t}{" "}
+              <span className="ml-1 bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
+                {t === "Past" ? past.length : t === "Upcoming" ? upcoming.length : today.length}
+              </span>
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {current.length === 0 ? (
+        <div className="p-6 text-center text-gray-500">No appointments found</div>
+      ) : (
+        <div className="divide-y divide-gray-200">
+          {current.map((row) => (
+            <div key={row.id} className="p-4 hover:bg-gray-50">
+              <div className="flex items-start justify-between">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <span className="font-medium text-gray-900">{fmtDatePretty(row.date)}</span>
+                    <span className="text-sm text-gray-500">{row.time_slot}</span>
+                    <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusTint(row.status))}>
+                      {row.status}
+                    </span>
+                  </div>
+                  <div className="mt-1">
+                    <p className="text-sm font-medium text-gray-900">{row.patient_name}</p>
+                    <p className="text-sm text-gray-500">{row.phone}</p>
+                    <p className="text-sm text-gray-500 mt-1">{row.service_type}</p>
+                  </div>
+                </div>
+                <div className="ml-4 flex-shrink-0 flex space-x-2">
+                  <select
+                    className="rounded-md border border-gray-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                    value={row.status}
+                    onChange={(e) => onStatus?.(row, e.target.value)}
+                  >
+                    {STATUSES.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
+                    onClick={() => onDelete?.(row)}
+                  >
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ===================== OVERVIEW STATS ===================== */
+const StatCard = ({ title, value, icon, accent = "indigo" }) => (
+  <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex items-center justify-between">
+    <div>
+      <p className="text-xs font-medium text-gray-500">{title}</p>
+      <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
+    </div>
+    <div
+      className={cls(
+        "h-10 w-10 rounded-lg flex items-center justify-center",
+        accent === "indigo" && "bg-indigo-50 text-indigo-600",
+        accent === "emerald" && "bg-emerald-50 text-emerald-600",
+        accent === "amber" && "bg-amber-50 text-amber-600",
+        accent === "rose" && "bg-rose-50 text-rose-600"
+      )}
+    >
+      {icon}
+    </div>
+  </div>
+);
+
+/* ===================== MAIN DASHBOARD PAGE ===================== */
+const AppointmentDashboard = () => {
+  const [activeTab, setActiveTab] = useState("Calendar");
+  const [showNew, setShowNew] = useState(false);
+
+  const [view, setView] = useState("Month");
+  const [focusDate, setFocusDate] = useState(new Date());
+
+  const [allInRange, setAllInRange] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState("");
+
+  const focusedISO = iso(focusDate);
+
+  const eventsByDate = useMemo(() => {
+    const map = new Map();
+    for (const item of allInRange) {
+      if (!item?.date) continue;
+      if (!map.has(item.date)) map.set(item.date, []);
+      map.get(item.date).push(item);
+    }
+    return map;
+  }, [allInRange]);
+
+  // Top stats
+  const t0 = todayISO();
+  const todayCount = (eventsByDate.get(t0) || []).length;
+  const next7 = (() => {
+    const end = new Date();
+    end.setDate(end.getDate() + 6);
+    const endISO = iso(end);
+    return (allInRange || []).filter((r) => r.date >= t0 && r.date <= endISO).length;
+  })();
+  const pendingCount = (allInRange || []).filter((r) => r.status === "Pending").length;
+  const confirmedCount = (allInRange || []).filter((r) => r.status === "Confirmed").length;
+
+  const dayItems = eventsByDate.get(focusedISO) || [];
+
+  const range = useMemo(() => {
+    if (view === "Day") {
+      const d = iso(focusDate);
+      return { from: d, to: d };
+    }
+    if (view === "Week") {
+      const s = startOfWeek(focusDate);
+      const e = endOfWeek(focusDate);
+      return { from: iso(s), to: iso(e) };
+    }
+    const from = iso(firstOfMonthGrid(focusDate));
+    const to = iso(lastOfMonthGrid(focusDate));
+    return { from, to };
+  }, [view, focusDate]);
+
+  // tiny wrapper to use the centralized API, with optional fallback aggregation
+  const fetchRange = async (from, to) => {
+    try {
+      return await apiGetAppointmentsByRange(from, to);
+    } catch {
+      const out = [];
+      const d0 = new Date(from);
+      const d1 = new Date(to);
+      for (let d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
+        // eslint-disable-next-line no-await-in-loop
+        const rows = await apiGetAppointmentsByDate(d.toISOString().slice(0, 10));
+        out.push(...(Array.isArray(rows) ? rows : []));
+      }
+      return out;
+    }
+  };
+
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      setLoading(true);
+      setErr("");
+      try {
+        const rows = await fetchRange(range.from, range.to);
+        if (!live) return;
+        setAllInRange(Array.isArray(rows) ? rows : []);
+      } catch (e) {
+        setErr(e?.message || "Failed to load appointments");
+      } finally {
+        setLoading(false);
+      }
+    })();
+    return () => {
+      live = false;
+    };
+  }, [range.from, range.to]);
+
+  const refreshDay = async (dateISO) => {
+    const rows = await fetchRange(range.from, range.to);
+    setAllInRange(Array.isArray(rows) ? rows : []);
+    if (dateISO) {
+      setFocusDate(new Date(dateISO + "T00:00:00"));
+      setActiveTab("Calendar");
+      setView("Day");
+    }
+  };
+
+  const onStatus = async (row, newStatus) => {
+    try {
+      await apiUpdateAppointment(row.id, { status: newStatus });
+      refreshDay();
+    } catch (e) {
+      setErr(e?.message || "Failed to update status");
+    }
+  };
+
+  const onDelete = async (row) => {
+    if (!window.confirm("Delete this appointment?")) return;
+    try {
+      await apiDeleteAppointment(row.id);
+      refreshDay();
+    } catch (e) {
+      setErr(e?.message || "Failed to delete");
+    }
+  };
+
+  const allSorted = useMemo(() => (allInRange || []).slice().sort(cmpByDateTime), [allInRange]);
+
+  const viewOptions = [
+    { value: "Day", label: "Day View" },
+    { value: "Week", label: "Week View" },
+    { value: "Month", label: "Month View" },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-indigo-50/60 to-gray-50">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Appointment Dashboard</h1>
+            <p className="text-sm text-gray-500">Overview & schedule</p>
+          </div>
+        </div>
+
+        {/* Top Stats */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          <StatCard title="Today" value={todayCount} accent="indigo" icon={<IoIosToday className="h-5 w-5" />} />
+          <StatCard title="Upcoming (7d)" value={next7} accent="emerald" icon={<MdUpcoming className="h-5 w-5" />} />
+          <StatCard title="Pending" value={pendingCount} accent="amber" icon={<MdPendingActions className="h-5 w-5" />} />
+          <StatCard title="Confirmed" value={confirmedCount} accent="indigo" icon={<MdConfirmationNumber className="h-5 w-5" />} />
+          <StatCard
+            title="Capacity Left (Today)"
+            value={Math.max(0, MAX_APPTS_PER_DAY - todayCount)}
+            accent="rose"
+            icon={<MdReduceCapacity className="h-5 w-5" />}
+          />
+        </div>
+
+        {/* Tabs & Content */}
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px">
+              {["Calendar", "Appointments"].map((tab) => (
+                <button
+                  key={tab}
+                  className={cls(
+                    "px-4 py-3 text-sm font-medium border-b-2",
+                    activeTab === tab
+                      ? "border-indigo-500 text-indigo-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  )}
+                  onClick={() => setActiveTab(tab)}
+                >
+                  {tab}
+                </button>
+              ))}
+            </nav>
+          </div>
+
+          <div className="p-4">
+            {activeTab === "Calendar" && (
+              <div className="mb-4">
+                <div className="w-36">
+                  <Select
+                    options={viewOptions}
+                    value={viewOptions.find((opt) => opt.value === view)}
+                    onChange={(opt) => setView(opt.value)}
+                    isSearchable={false}
+                    className="react-select-container font-medium"
+                    classNamePrefix="react-select"
+                  />
+                </div>
+              </div>
+            )}
+
+            {err && (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 mb-4">
+                {err}
+              </div>
+            )}
+
+            {activeTab === "Calendar" ? (
+              <div>
+                <div className="mb-4">
+                  <CalendarHeader
+                    view={view}
+                    onView={setView}
+                    date={focusDate}
+                    setDate={setFocusDate}
+                    onNew={() => setShowNew(true)}
+                  />
+                </div>
+
+                {loading ? (
+                  <div className="flex justify-center py-8">
+                    <svg className="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                  </div>
+                ) : view === "Month" ? (
+                  <MonthGrid
+                    date={focusDate}
+                    eventsByDate={eventsByDate}
+                    onPickDay={(d) => {
+                      setFocusDate(new Date(d + "T00:00:00"));
+                      setView("Day");
+                    }}
+                  />
+                ) : view === "Week" ? (
+                  <WeekStrip
+                    date={focusDate}
+                    eventsByDate={eventsByDate}
+                    onPickDay={(d) => {
+                      setFocusDate(new Date(d + "T00:00:00"));
+                      setView("Day");
+                    }}
+                  />
+                ) : (
+                  <DayPanel dateISO={focusedISO} items={dayItems} onStatus={onStatus} onDelete={onDelete} />
+                )}
+              </div>
+            ) : (
+              <AppointmentsList all={allSorted} onStatus={onStatus} onDelete={onDelete} />
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* New Appointment Modal */}
+      <NewAppointmentModal
+        open={showNew}
+        onClose={() => setShowNew(false)}
+        defaultDate={focusedISO}
+        onCreated={refreshDay}
+        dayAppointmentsForCapacity={eventsByDate.get(focusedISO) || []}
+      />
+    </div>
+  );
+};
+
+export default AppointmentDashboard;

@@ -36,7 +36,7 @@ const ProtectedRoute = ({ children }) => {
 
   if (!session) {
     // Not logged in: go to login and remember where the user wanted to go
-    return <Navigate to="/login" replace state={{ from: location }} />;
+    return <Navigate to="/" replace state={{ from: location }} />;
   }
 
   return children;

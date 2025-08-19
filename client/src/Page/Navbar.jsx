@@ -2,10 +2,11 @@ import { useEffect, useState } from "react";
 import { supabase } from "../CreateClient";
 import { motion } from "framer-motion";
 import { FaUser, FaSignOutAlt, FaTooth } from "react-icons/fa";
-import { Link } from "react-router-dom";
+import { Link ,useNavigate} from "react-router-dom";
 
 const Navbar = () => {
   const [user, setUser] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     let mounted = true;
@@ -31,6 +32,7 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+
   };
 
   return (

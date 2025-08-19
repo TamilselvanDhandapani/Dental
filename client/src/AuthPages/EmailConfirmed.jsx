@@ -59,7 +59,7 @@ const EmailConfirmed = () => {
         
         {isVerified && !message.includes('Redirecting') && (
           <button
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/')}
             className="mt-4 px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors"
           >
             Go to Sign In
