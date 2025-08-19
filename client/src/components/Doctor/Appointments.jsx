@@ -71,6 +71,10 @@ const toLabel = (hhmm) => {
 const isValidPhone = (v) => /^\+?\d{10,14}$/.test(String(v || "").trim());
 const cls = (...xs) => xs.filter(Boolean).join(" ");
 
+// If rescheduled, prefer rescheduled_time in displays
+const displayTime = (row) =>
+  row?.status === "Rescheduled" && row?.rescheduled_time ? row.rescheduled_time : row?.time_slot;
+
 const statusTint = (s) => {
   switch (s) {
     case "Pending": return "bg-amber-100 text-amber-800";
@@ -94,7 +98,7 @@ const fmtDatePretty = (isoStr) =>
 
 const cmpByDateTime = (a, b) =>
   String(a.date).localeCompare(String(b.date)) ||
-  String(a.time_slot).localeCompare(String(b.time_slot));
+  String(displayTime(a)).localeCompare(String(displayTime(b)));
 
 const startOfWeek = (d) => {
   const dt = new Date(d);
@@ -113,12 +117,18 @@ const endOfWeek = (d) => {
 const firstOfMonthGrid = (d) => startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1));
 const lastOfMonthGrid = (d) => endOfWeek(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 
-/* ===================== RESCHEDULE MODAL (NEW) ===================== */
-const RescheduleModal = ({ open, onClose, row, onSave }) => {
+/* ===================== RESCHEDULE MODAL (UPDATED) ===================== */
+const RescheduleModal = ({ open, onClose, row, onSave, getBookedForDate }) => {
   const [reschedDate, setReschedDate] = useState("");
   const [reschedTime, setReschedTime] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+
+  const bookedSet = useMemo(() => {
+    if (!reschedDate || !getBookedForDate) return new Set();
+    const list = getBookedForDate(reschedDate) || [];
+    return new Set(list.map((a) => a.time_slot));
+  }, [reschedDate, getBookedForDate]);
 
   useEffect(() => {
     if (open) {
@@ -130,8 +140,6 @@ const RescheduleModal = ({ open, onClose, row, onSave }) => {
   }, [open]);
 
   if (!open || !row) return null;
-
-  const reschedTimeOptions = SLOT_DEFS.map((s) => ({ value: s, label: toLabel(s) }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -171,7 +179,7 @@ const RescheduleModal = ({ open, onClose, row, onSave }) => {
               </svg>
             </button>
           </div>
-          <p className="text-indigo-100 text-sm">Patient: {row?.patient_name} • {row?.date} {row?.time_slot}</p>
+          <p className="text-indigo-100 text-sm">Patient: {row?.patient_name} • {row?.date} {displayTime(row)}</p>
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -180,7 +188,7 @@ const RescheduleModal = ({ open, onClose, row, onSave }) => {
               {error}
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">New Date *</label>
               <input
@@ -191,17 +199,39 @@ const RescheduleModal = ({ open, onClose, row, onSave }) => {
                 required
               />
             </div>
+
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">New Time *</label>
-              <Select
-                options={reschedTimeOptions}
-                value={reschedTime ? { value: reschedTime, label: toLabel(reschedTime) } : null}
-                onChange={(selected) => setReschedTime(selected.value)}
-                className="react-select-container"
-                classNamePrefix="react-select"
-                placeholder="Select time"
-                isSearchable={false}
-              />
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm font-medium text-gray-700">New Time *</label>
+                {reschedDate ? (
+                  <span className="text-xs text-gray-500">Booked slots disabled</span>
+                ) : (
+                  <span className="text-xs text-rose-600">Select a date first</span>
+                )}
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {SLOT_DEFS.map((s) => {
+                  const booked = bookedSet.has(s);
+                  const active = reschedTime === s;
+                  return (
+                    <button
+                      type="button"
+                      key={s}
+                      disabled={!reschedDate || booked}
+                      onClick={() => !booked && reschedDate && setReschedTime(s)}
+                      className={cls(
+                        "rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors",
+                        (!reschedDate || booked) && "cursor-not-allowed opacity-60 bg-gray-50",
+                        active
+                          ? "border-indigo-600 bg-indigo-100 text-indigo-700"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                      )}
+                    >
+                      {toLabel(s)}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
@@ -282,7 +312,10 @@ const NewAppointmentModal = ({
 
   const serviceOptions = SERVICE_TYPES.map((type) => ({ value: type, label: type }));
   const statusOptions = STATUSES.map((s) => ({ value: s, label: s }));
-  const reschedTimeOptions = SLOT_DEFS.map((s) => ({ value: s, label: toLabel(s) }));
+
+  const menuPortalStyles = {
+    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -386,6 +419,10 @@ const NewAppointmentModal = ({
                   className="react-select-container"
                   classNamePrefix="react-select"
                   isSearchable={false}
+                  menuPlacement="top"
+                  menuPosition="fixed"
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  styles={menuPortalStyles}
                 />
               </div>
             </div>
@@ -432,6 +469,11 @@ const NewAppointmentModal = ({
                   className="react-select-container"
                   classNamePrefix="react-select"
                   isSearchable={false}
+                  // Open upwards so it doesn't get hidden
+                  menuPlacement="top"
+                  menuPosition="fixed"
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                  styles={menuPortalStyles}
                 />
               </div>
               {status === "Rescheduled" && (
@@ -445,15 +487,27 @@ const NewAppointmentModal = ({
                       className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
                       required
                     />
-                    <Select
-                      options={reschedTimeOptions}
-                      value={reschedTime ? { value: reschedTime, label: toLabel(reschedTime) } : null}
-                      onChange={(selected) => setReschedTime(selected.value)}
-                      className="react-select-container"
-                      classNamePrefix="react-select"
-                      placeholder="Select time"
-                      isSearchable={false}
-                    />
+                    {/* timing buttons like main slots */}
+                    <div className="col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {SLOT_DEFS.map((s) => {
+                        const active = reschedTime === s;
+                        return (
+                          <button
+                            type="button"
+                            key={s}
+                            onClick={() => setReschedTime(s)}
+                            className={cls(
+                              "rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors",
+                              active
+                                ? "border-indigo-600 bg-indigo-100 text-indigo-700"
+                                : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                            )}
+                          >
+                            {toLabel(s)}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
@@ -610,7 +664,7 @@ const MonthGrid = ({ date, eventsByDate, onPickDay }) => {
               <div className="mt-1 space-y-1 overflow-hidden">
                 {list.slice(0, 3).map((e) => (
                   <div key={e.id} className={cls("rounded px-1 py-0.5 text-[11px] truncate", statusTint(e.status))}>
-                    <span className="font-medium">{e.time_slot}</span> • {e.patient_name}
+                    <span className="font-medium">{displayTime(e)}</span> • {e.patient_name}
                   </div>
                 ))}
                 {list.length > 3 && <div className="text-[11px] text-gray-500">+{list.length - 3} more</div>}
@@ -662,7 +716,7 @@ const WeekStrip = ({ date, eventsByDate, onPickDay }) => {
               ) : (
                 items.map((e) => (
                   <div key={e.id} className={cls("rounded px-2 py-1 text-xs flex items-start", statusTint(e.status))}>
-                    <span className="font-medium mr-1">{e.time_slot}</span>
+                    <span className="font-medium mr-1">{displayTime(e)}</span>
                     <span className="truncate">{e.patient_name}</span>
                   </div>
                 ))
@@ -697,7 +751,7 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete, onReschedule }) => {
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2">
-                      <span className="font-medium text-gray-900">{row.time_slot}</span>
+                      <span className="font-medium text-gray-900">{displayTime(row)}</span>
                       <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusTint(row.status))}>
                         {row.status}
                       </span>
@@ -742,16 +796,23 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete, onReschedule }) => {
 };
 
 /* ===================== APPOINTMENTS LIST WITH TABS ===================== */
-const AppointmentsList = ({ all, onStatus, onDelete, onReschedule }) => {
-  const [tab, setTab] = useState("Today");
-  const t0 = todayISO();
+
+const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, defaultTab = "Upcoming" }) => {
+  const [tab, setTab] = useState(defaultTab);
+
+  // when base date changes (e.g., user selected a future date), update default tab intent
+  useEffect(() => {
+    setTab(defaultTab);
+  }, [defaultTab, baseDateISO]);
 
   const parsed = (all || []).slice().sort(cmpByDateTime);
-  const past = parsed.filter((r) => r.date < t0);
-  const today = parsed.filter((r) => r.date === t0);
-  const upcoming = parsed.filter((r) => r.date > t0);
+  const past = parsed.filter((r) => r.date < baseDateISO);
+  const today = parsed.filter((r) => r.date === baseDateISO);
+  const upcoming = parsed.filter((r) => r.date > baseDateISO);
 
   const current = tab === "Past" ? past : tab === "Upcoming" ? upcoming : today;
+
+  const statusOptions = STATUSES.map((s) => ({ value: s, label: s }));
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
@@ -787,7 +848,7 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule }) => {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2">
                     <span className="font-medium text-gray-900">{fmtDatePretty(row.date)}</span>
-                    <span className="text-sm text-gray-500">{row.time_slot}</span>
+                    <span className="text-sm text-gray-500">{displayTime(row)}</span>
                     <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusTint(row.status))}>
                       {row.status}
                     </span>
@@ -798,22 +859,22 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule }) => {
                     <p className="text-sm text-gray-500 mt-1">{row.service_type}</p>
                   </div>
                 </div>
-                <div className="ml-4 flex-shrink-0 flex space-x-2">
-                  <select
-                    className="rounded-md border border-gray-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                    value={row.status}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      if (v === "Rescheduled") onReschedule?.(row);
-                      else onStatus?.(row, v);
-                    }}
-                  >
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
+                <div className="ml-4 flex-shrink-0 flex items-center space-x-2">
+                  {/* React-Select for Status in Appointments Tab */}
+                  <div className="min-w-[160px]">
+                    <Select
+                      options={statusOptions}
+                      value={{ value: row.status, label: row.status }}
+                      onChange={(selected) => {
+                        const v = selected.value;
+                        if (v === "Rescheduled") onReschedule?.(row);
+                        else onStatus?.(row, v);
+                      }}
+                      className="react-select-container"
+                      classNamePrefix="react-select"
+                      isSearchable={false}
+                    />
+                  </div>
                   <button
                     className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
                     onClick={() => onDelete?.(row)}
@@ -856,7 +917,7 @@ const AppointmentDashboard = () => {
   const [activeTab, setActiveTab] = useState("Calendar");
   const [showNew, setShowNew] = useState(false);
 
-  // NEW: reschedule modal state
+  // reschedule modal state
   const [reschedTarget, setReschedTarget] = useState(null);
   const [showResched, setShowResched] = useState(false);
 
@@ -993,6 +1054,16 @@ const AppointmentDashboard = () => {
 
   const allSorted = useMemo(() => (allInRange || []).slice().sort(cmpByDateTime), [allInRange]);
 
+  // Determine base date for Appointments tab partitioning and default tab
+  const baseDateISO = (() => {
+    const f = iso(focusDate);
+    return f > t0 ? f : t0;
+  })();
+  const defaultTabForList = baseDateISO > t0 ? "Past" : "Upcoming";
+
+  // Support: booked slots getter for reschedule modal
+  const getBookedForDate = (dateISO) => eventsByDate.get(dateISO) || [];
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50/60 to-gray-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
@@ -1098,6 +1169,8 @@ const AppointmentDashboard = () => {
                 onStatus={handleStatusChange}
                 onDelete={onDelete}
                 onReschedule={openReschedule}
+                baseDateISO={baseDateISO}
+                defaultTab={defaultTabForList}
               />
             )}
           </div>
@@ -1122,6 +1195,7 @@ const AppointmentDashboard = () => {
         }}
         row={reschedTarget}
         onSave={saveReschedule}
+        getBookedForDate={getBookedForDate}
       />
     </div>
   );
