@@ -831,11 +831,7 @@ const AppointmentDashboard = () => {
 
   const allSorted = useMemo(() => (allInRange || []).slice().sort(cmpByDateTime), [allInRange]);
 
-  const viewOptions = [
-    { value: "Day", label: "Day View" },
-    { value: "Week", label: "Week View" },
-    { value: "Month", label: "Month View" },
-  ];
+ 
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50/60 to-gray-50">
@@ -883,20 +879,7 @@ const AppointmentDashboard = () => {
           </div>
 
           <div className="p-4">
-            {activeTab === "Calendar" && (
-              <div className="mb-4">
-                <div className="w-36">
-                  <Select
-                    options={viewOptions}
-                    value={viewOptions.find((opt) => opt.value === view)}
-                    onChange={(opt) => setView(opt.value)}
-                    isSearchable={false}
-                    className="react-select-container font-medium"
-                    classNamePrefix="react-select"
-                  />
-                </div>
-              </div>
-            )}
+            
 
             {err && (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 mb-4">
