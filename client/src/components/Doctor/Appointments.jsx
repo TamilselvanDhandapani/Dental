@@ -1,15 +1,33 @@
 import { useEffect, useMemo, useState } from "react";
 import Select from "react-select";
 import {
-  
   getAppointmentsByDate as apiGetAppointmentsByDate,
   getAppointmentsByRange as apiGetAppointmentsByRange,
   createAppointment as apiCreateAppointment,
   updateAppointment as apiUpdateAppointment,
   deleteAppointment as apiDeleteAppointment,
 } from "../../utils/api";
-import { IoIosToday } from "react-icons/io";
-import { MdUpcoming, MdPendingActions, MdConfirmationNumber, MdReduceCapacity } from "react-icons/md";
+import { 
+  IoIosToday, 
+  IoMdAdd, 
+  IoMdCalendar, 
+  IoMdList,
+  IoMdTime,
+  IoMdPerson,
+  IoMdCall,
+  IoMdMedical
+} from "react-icons/io";
+import { 
+  MdUpcoming, 
+  MdPendingActions, 
+  MdConfirmationNumber, 
+  MdReduceCapacity,
+  MdDeleteOutline,
+  MdEdit,
+  MdRefresh,
+  MdSearch
+} from "react-icons/md";
+import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
 /* ===================== CONSTANTS & HELPERS ===================== */
 const MAX_APPTS_PER_DAY = 15;
@@ -77,13 +95,25 @@ const displayTime = (row) =>
 
 const statusTint = (s) => {
   switch (s) {
-    case "Pending": return "bg-amber-100 text-amber-800";
-    case "Confirmed": return "bg-indigo-100 text-indigo-800";
-    case "Cancelled": return "bg-rose-100 text-rose-800";
-    case "Completed": return "bg-emerald-100 text-emerald-800";
-    case "No Show": return "bg-rose-100 text-rose-800";
-    case "Rescheduled": return "bg-slate-100 text-slate-800";
-    default: return "bg-gray-100 text-gray-800";
+    case "Pending": return "bg-amber-100 text-amber-800 border-amber-200";
+    case "Confirmed": return "bg-indigo-100 text-indigo-800 border-indigo-200";
+    case "Cancelled": return "bg-rose-100 text-rose-800 border-rose-200";
+    case "Completed": return "bg-emerald-100 text-emerald-800 border-emerald-200";
+    case "No Show": return "bg-rose-100 text-rose-800 border-rose-200";
+    case "Rescheduled": return "bg-slate-100 text-slate-800 border-slate-200";
+    default: return "bg-gray-100 text-gray-800 border-gray-200";
+  }
+};
+
+const statusColor = (s) => {
+  switch (s) {
+    case "Pending": return "text-amber-600";
+    case "Confirmed": return "text-indigo-600";
+    case "Cancelled": return "text-rose-600";
+    case "Completed": return "text-emerald-600";
+    case "No Show": return "text-rose-600";
+    case "Rescheduled": return "text-slate-600";
+    default: return "text-gray-600";
   }
 };
 
@@ -117,7 +147,36 @@ const endOfWeek = (d) => {
 const firstOfMonthGrid = (d) => startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1));
 const lastOfMonthGrid = (d) => endOfWeek(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 
-/* ===================== RESCHEDULE MODAL (UPDATED) ===================== */
+// Custom styles for react-select to fix z-index issues
+const customSelectStyles = {
+  control: (provided, state) => ({
+    ...provided,
+    minHeight: '38px',
+    borderRadius: '6px',
+    borderColor: state.isFocused ? '#6366f1' : '#d1d5db',
+    boxShadow: state.isFocused ? '0 0 0 1px #6366f1' : 'none',
+    '&:hover': {
+      borderColor: state.isFocused ? '#6366f1' : '#9ca3af'
+    }
+  }),
+  menu: (provided) => ({
+    ...provided,
+    zIndex: 9999,
+    borderRadius: '6px',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+  }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+  option: (provided, state) => ({
+    ...provided,
+    backgroundColor: state.isSelected ? '#6366f1' : state.isFocused ? '#eef2ff' : 'white',
+    color: state.isSelected ? 'white' : '#374151',
+    '&:active': {
+      backgroundColor: state.isSelected ? '#6366f1' : '#e0e7ff'
+    }
+  })
+};
+
+/* ===================== RESCHEDULE MODAL ===================== */
 const RescheduleModal = ({ open, onClose, row, onSave, getBookedForDate }) => {
   const [reschedDate, setReschedDate] = useState("");
   const [reschedTime, setReschedTime] = useState("");
@@ -313,10 +372,6 @@ const NewAppointmentModal = ({
   const serviceOptions = SERVICE_TYPES.map((type) => ({ value: type, label: type }));
   const statusOptions = STATUSES.map((s) => ({ value: s, label: s }));
 
-  const menuPortalStyles = {
-    menuPortal: (base) => ({ ...base, zIndex: 9999 }),
-  };
-
   const handleCreate = async (e) => {
     e.preventDefault();
     if (disableSubmit) return;
@@ -419,10 +474,8 @@ const NewAppointmentModal = ({
                   className="react-select-container"
                   classNamePrefix="react-select"
                   isSearchable={false}
-                  menuPlacement="top"
-                  menuPosition="fixed"
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  styles={menuPortalStyles}
+                  menuPlacement="auto"
+                  styles={customSelectStyles}
                 />
               </div>
             </div>
@@ -469,11 +522,8 @@ const NewAppointmentModal = ({
                   className="react-select-container"
                   classNamePrefix="react-select"
                   isSearchable={false}
-                  // Open upwards so it doesn't get hidden
-                  menuPlacement="top"
-                  menuPosition="fixed"
-                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
-                  styles={menuPortalStyles}
+                  menuPlacement="auto"
+                  styles={customSelectStyles}
                 />
               </div>
               {status === "Rescheduled" && (
@@ -487,7 +537,6 @@ const NewAppointmentModal = ({
                       className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
                       required
                     />
-                    {/* timing buttons like main slots */}
                     <div className="col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {SLOT_DEFS.map((s) => {
                         const active = reschedTime === s;
@@ -589,17 +638,13 @@ const CalendarHeader = ({ view, onView, date, setDate, onNew }) => {
     <div className="flex flex-wrap items-center justify-between gap-4">
       <div className="flex items-center gap-2">
         <button className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 text-gray-700" onClick={prev} title="Previous">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z" clipRule="evenodd" />
-          </svg>
+          <FiChevronLeft className="h-5 w-5" />
         </button>
         <button className="rounded-md border border-gray-300 px-3 py-1.5 text-sm hover:bg-gray-50 text-gray-700" onClick={goToday}>
           Today
         </button>
         <button className="rounded-md border border-gray-300 p-1.5 hover:bg-gray-50 text-gray-700" onClick={next} title="Next">
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
-          </svg>
+          <FiChevronRight className="h-5 w-5" />
         </button>
         <h3 className="ml-2 text-lg font-semibold text-gray-900">{title}</h3>
       </div>
@@ -608,10 +653,10 @@ const CalendarHeader = ({ view, onView, date, setDate, onNew }) => {
         <button
           type="button"
           onClick={onNew}
-          className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+          className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-700 hover:bg-indigo-100 flex items-center gap-1"
           title={view === "Day" ? `Book for ${fmtDatePretty(iso(date))}` : "Book appointment"}
         >
-          New Appointment {view === "Day" ? `• ${fmtDatePretty(iso(date))}` : ""}
+          <IoMdAdd className="h-4 w-4" /> New {view === "Day" ? `• ${fmtDatePretty(iso(date))}` : ""}
         </button>
         <ViewToggle value={view} onChange={onView} />
       </div>
@@ -799,6 +844,9 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete, onReschedule }) => {
 
 const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, defaultTab = "Upcoming" }) => {
   const [tab, setTab] = useState(defaultTab);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [dateFilter, setDateFilter] = useState("");
 
   // when base date changes (e.g., user selected a future date), update default tab intent
   useEffect(() => {
@@ -810,76 +858,155 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
   const today = parsed.filter((r) => r.date === baseDateISO);
   const upcoming = parsed.filter((r) => r.date > baseDateISO);
 
-  const current = tab === "Past" ? past : tab === "Upcoming" ? upcoming : today;
+  // Apply filters
+  const filterAppointments = (appointments) => {
+    return appointments.filter(app => {
+      const matchesSearch = app.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          app.phone.includes(searchTerm);
+      const matchesStatus = statusFilter === "All" || app.status === statusFilter;
+      const matchesDate = !dateFilter || app.date === dateFilter;
+      
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+  };
 
-  const statusOptions = STATUSES.map((s) => ({ value: s, label: s }));
+  const filteredPast = filterAppointments(past);
+  const filteredToday = filterAppointments(today);
+  const filteredUpcoming = filterAppointments(upcoming);
+
+  const current = tab === "Past" ? filteredPast : tab === "Upcoming" ? filteredUpcoming : filteredToday;
+
+  const statusOptions = [{ value: "All", label: "All Statuses" }, ...STATUSES.map((s) => ({ value: s, label: s }))];
 
   return (
     <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-      <div className="border-b border-gray-200">
-        <nav className="flex -mb-px">
-          {["Past", "Today", "Upcoming"].map((t) => (
-            <button
-              key={t}
-              className={cls(
-                "px-4 py-3 text-sm font-medium border-b-2",
-                tab === t
-                  ? "border-indigo-500 text-indigo-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
-              )}
-              onClick={() => setTab(t)}
-            >
-              {t}{" "}
-              <span className="ml-1 bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
-                {t === "Past" ? past.length : t === "Upcoming" ? upcoming.length : today.length}
-              </span>
-            </button>
-          ))}
-        </nav>
+      <div className="border-b border-gray-200 p-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <nav className="flex -mb-px">
+            {["Past", "Today", "Upcoming"].map((t) => (
+              <button
+                key={t}
+                className={cls(
+                  "px-4 py-2 text-sm font-medium border-b-2",
+                  tab === t
+                    ? "border-indigo-500 text-indigo-600"
+                    : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                )}
+                onClick={() => setTab(t)}
+              >
+                {t}{" "}
+                <span className="ml-1 bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs">
+                  {t === "Past" ? filteredPast.length : t === "Upcoming" ? filteredUpcoming.length : filteredToday.length}
+                </span>
+              </button>
+            ))}
+          </nav>
+          
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <MdSearch className="h-4 w-4 text-gray-400" />
+              </div>
+              <input
+                type="text"
+                placeholder="Search patients..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              />
+            </div>
+            
+            <Select
+              options={statusOptions}
+              value={statusOptions.find(opt => opt.value === statusFilter) || statusOptions[0]}
+              onChange={(selected) => setStatusFilter(selected.value)}
+              className="w-40 text-sm"
+              isSearchable={false}
+              styles={customSelectStyles}
+            />
+            
+            <input
+              type="date"
+              value={dateFilter}
+              onChange={(e) => setDateFilter(e.target.value)}
+              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              placeholder="Filter by date"
+            />
+          </div>
+        </div>
       </div>
 
       {current.length === 0 ? (
-        <div className="p-6 text-center text-gray-500">No appointments found</div>
+        <div className="p-6 text-center text-gray-500">
+          {searchTerm || statusFilter !== "All" || dateFilter ? 
+            "No appointments match your filters" : 
+            "No appointments found"}
+        </div>
       ) : (
         <div className="divide-y divide-gray-200">
           {current.map((row) => (
-            <div key={row.id} className="p-4 hover:bg-gray-50">
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center space-x-2">
+            <div key={row.id} className="p-4 hover:bg-gray-50 transition-colors">
+              <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
                     <span className="font-medium text-gray-900">{fmtDatePretty(row.date)}</span>
-                    <span className="text-sm text-gray-500">{displayTime(row)}</span>
+                    <div className="flex items-center text-sm text-gray-500">
+                      <IoMdTime className="mr-1 h-4 w-4" />
+                      {displayTime(row)}
+                    </div>
                     <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusTint(row.status))}>
                       {row.status}
                     </span>
                   </div>
-                  <div className="mt-1">
-                    <p className="text-sm font-medium text-gray-900">{row.patient_name}</p>
-                    <p className="text-sm text-gray-500">{row.phone}</p>
-                    <p className="text-sm text-gray-500 mt-1">{row.service_type}</p>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    <div className="flex items-center">
+                      <IoMdPerson className="mr-2 h-4 w-4 text-gray-400" />
+                      <span className="text-sm font-medium text-gray-900">{row.patient_name}</span>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <IoMdCall className="mr-2 h-4 w-4 text-gray-400" />
+                      <span className="text-sm text-gray-500">{row.phone}</span>
+                    </div>
+                    
+                    <div className="flex items-center">
+                      <IoMdMedical className="mr-2 h-4 w-4 text-gray-400" />
+                      <span className="text-sm text-gray-500">{row.service_type}</span>
+                    </div>
                   </div>
                 </div>
-                <div className="ml-4 flex-shrink-0 flex items-center space-x-2">
-                  {/* React-Select for Status in Appointments Tab */}
-                  <div className="min-w-[160px]">
+                
+                <div className="flex items-center gap-2">
+                  <div className="relative z-50 min-w-[120px]">
                     <Select
-                      options={statusOptions}
+                      options={STATUSES.map(s => ({ value: s, label: s }))}
                       value={{ value: row.status, label: row.status }}
                       onChange={(selected) => {
                         const v = selected.value;
                         if (v === "Rescheduled") onReschedule?.(row);
                         else onStatus?.(row, v);
                       }}
-                      className="react-select-container"
-                      classNamePrefix="react-select"
+                      className="text-sm"
                       isSearchable={false}
+                      styles={customSelectStyles}
                     />
                   </div>
+                  
                   <button
-                    className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
-                    onClick={() => onDelete?.(row)}
+                    className="inline-flex items-center justify-center rounded-md border border-gray-200 p-2 text-gray-600 hover:bg-gray-100"
+                    onClick={() => onReschedule?.(row)}
+                    title="Reschedule"
                   >
-                    Delete
+                    <MdEdit className="h-4 w-4" />
+                  </button>
+                  
+                  <button
+                    className="inline-flex items-center justify-center rounded-md border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"
+                    onClick={() => onDelete?.(row)}
+                    title="Delete"
+                  >
+                    <MdDeleteOutline className="h-4 w-4" />
                   </button>
                 </div>
               </div>
@@ -892,22 +1019,32 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
 };
 
 /* ===================== OVERVIEW STATS ===================== */
-const StatCard = ({ title, value, icon, accent = "indigo" }) => (
-  <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm flex items-center justify-between">
-    <div>
-      <p className="text-xs font-medium text-gray-500">{title}</p>
-      <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
-    </div>
-    <div
-      className={cls(
-        "h-10 w-10 rounded-lg flex items-center justify-center",
-        accent === "indigo" && "bg-indigo-50 text-indigo-600",
-        accent === "emerald" && "bg-emerald-50 text-emerald-600",
-        accent === "amber" && "bg-amber-50 text-amber-600",
-        accent === "rose" && "bg-rose-50 text-rose-600"
-      )}
-    >
-      {icon}
+const StatCard = ({ title, value, icon, accent = "indigo", subtitle, trend }) => (
+  <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
+    <div className="flex items-center justify-between">
+      <div>
+        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{title}</p>
+        <p className="mt-1 text-2xl font-semibold text-gray-900">{value}</p>
+        {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+        {trend && (
+          <p className={cls("text-xs font-medium mt-1 flex items-center", 
+            trend.value > 0 ? "text-emerald-600" : "text-rose-600")}>
+            {trend.value > 0 ? "↑" : "↓"} {Math.abs(trend.value)}% {trend.label}
+          </p>
+        )}
+      </div>
+      <div
+        className={cls(
+          "h-12 w-12 rounded-lg flex items-center justify-center",
+          accent === "indigo" && "bg-indigo-50 text-indigo-600",
+          accent === "emerald" && "bg-emerald-50 text-emerald-600",
+          accent === "amber" && "bg-amber-50 text-amber-600",
+          accent === "rose" && "bg-rose-50 text-rose-600",
+          accent === "purple" && "bg-purple-50 text-purple-600"
+        )}
+      >
+        {icon}
+      </div>
     </div>
   </div>
 );
@@ -951,6 +1088,7 @@ const AppointmentDashboard = () => {
   })();
   const pendingCount = (allInRange || []).filter((r) => r.status === "Pending").length;
   const confirmedCount = (allInRange || []).filter((r) => r.status === "Confirmed").length;
+  const completedCount = (allInRange || []).filter((r) => r.status === "Completed").length;
 
   const dayItems = eventsByDate.get(focusedISO) || [];
 
@@ -1065,54 +1203,82 @@ const AppointmentDashboard = () => {
   const getBookedForDate = (dateISO) => eventsByDate.get(dateISO) || [];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-indigo-50/60 to-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Appointment Dashboard</h1>
-            <p className="text-sm text-gray-500">Overview & schedule</p>
+            <p className="text-sm text-gray-500">Manage and track patient appointments</p>
           </div>
+          <button 
+            onClick={() => setShowNew(true)}
+            className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          >
+            <IoMdAdd className="mr-2 h-4 w-4" /> New Appointment
+          </button>
         </div>
 
         {/* Top Stats */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <StatCard title="Today" value={todayCount} accent="indigo" icon={<IoIosToday className="h-5 w-5" />} />
-          <StatCard title="Upcoming (7d)" value={next7} accent="emerald" icon={<MdUpcoming className="h-5 w-5" />} />
-          <StatCard title="Pending" value={pendingCount} accent="amber" icon={<MdPendingActions className="h-5 w-5" />} />
-          <StatCard title="Confirmed" value={confirmedCount} accent="indigo" icon={<MdConfirmationNumber className="h-5 w-5" />} />
-          <StatCard
-            title="Capacity Left (Today)"
-            value={Math.max(0, MAX_APPTS_PER_DAY - todayCount)}
-            accent="rose"
-            icon={<MdReduceCapacity className="h-5 w-5" />}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          <StatCard 
+            title="Today's Appointments" 
+            value={todayCount} 
+            subtitle={`${MAX_APPTS_PER_DAY - todayCount} slots available`}
+            accent="indigo" 
+            icon={<IoIosToday className="h-6 w-6" />} 
+          />
+          <StatCard 
+            title="Upcoming (7 days)" 
+            value={next7} 
+            accent="emerald" 
+            icon={<MdUpcoming className="h-6 w-6" />} 
+          />
+          <StatCard 
+            title="Pending Confirmation" 
+            value={pendingCount} 
+            accent="amber" 
+            icon={<MdPendingActions className="h-6 w-6" />} 
+          />
+          <StatCard 
+            title="Completed Today" 
+            value={completedCount} 
+            accent="purple" 
+            icon={<MdConfirmationNumber className="h-6 w-6" />} 
           />
         </div>
 
         {/* Tabs & Content */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="border-b border-gray-200">
+          <div className="border-b border-gray-200 bg-gray-50/50">
             <nav className="flex -mb-px">
               {["Calendar", "Appointments"].map((tab) => (
                 <button
                   key={tab}
                   className={cls(
-                    "px-4 py-3 text-sm font-medium border-b-2",
+                    "px-6 py-4 text-sm font-medium border-b-2 flex items-center gap-2",
                     activeTab === tab
-                      ? "border-indigo-500 text-indigo-600"
+                      ? "border-indigo-500 text-indigo-600 bg-white"
                       : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
                   )}
                   onClick={() => setActiveTab(tab)}
                 >
+                  {tab === "Calendar" ? <IoMdCalendar className="h-4 w-4" /> : <IoMdList className="h-4 w-4" />}
                   {tab}
                 </button>
               ))}
             </nav>
           </div>
 
-          <div className="p-4">
+          <div className="p-6">
             {err && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 mb-4">
-                {err}
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 mb-4 flex items-center justify-between">
+                <span>{err}</span>
+                <button 
+                  onClick={() => refreshDay()}
+                  className="inline-flex items-center text-rose-700 hover:text-rose-900"
+                >
+                  <MdRefresh className="mr-1 h-4 w-4" /> Retry
+                </button>
               </div>
             )}
 
