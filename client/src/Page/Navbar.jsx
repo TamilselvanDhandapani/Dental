@@ -44,11 +44,15 @@ const Navbar = () => {
             animate={{ opacity: 1, x: 0 }}
             className="flex-shrink-0 flex items-center"
           >
-            <FaTooth className="h-6 w-6 text-teal-500" />
-            <Link to="/" className="ml-2 text-xl font-bold text-gray-900">
+          <div>
+              <FaTooth className="h-12 w-8 text-teal-500" />
+          </div>
+            <div className="">
+              <Link to="/" className="ml-2 text-lg font-bold text-gray-900">
               Gugan
-              <span> DentalCare</span>
-            </Link>
+            </Link> <br/>
+            <span className="text-sm"> DentalCare</span>
+            </div>
           </motion.div>
 
           {/* Auth Section */}
