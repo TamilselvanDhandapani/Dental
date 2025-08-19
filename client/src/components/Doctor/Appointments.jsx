@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Select from "react-select";
 import {
-  // Appointments API (centralized)
+  
   getAppointmentsByDate as apiGetAppointmentsByDate,
   getAppointmentsByRange as apiGetAppointmentsByRange,
   createAppointment as apiCreateAppointment,
