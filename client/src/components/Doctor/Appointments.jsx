@@ -44,6 +44,23 @@ const SLOT_DEFS = [
   "15:30", "16:00", "16:30",
 ];
 
+const TZ = "Asia/Kolkata";
+
+const isoInTZ = (d, tz = TZ) => {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const y = parts.find((p) => p.type === "year").value;
+  const m = parts.find((p) => p.type === "month").value;
+  const day = parts.find((p) => p.type === "day").value;
+  return `${y}-${m}-${day}`;
+};
+const todayISO = () => isoInTZ(new Date());
+const iso = (d) => isoInTZ(new Date(d));
+
 const toLabel = (hhmm) => {
   const [h, m] = hhmm.split(":").map(Number);
   const ampm = h >= 12 ? "pm" : "am";
@@ -52,8 +69,6 @@ const toLabel = (hhmm) => {
 };
 
 const isValidPhone = (v) => /^\+?\d{10,14}$/.test(String(v || "").trim());
-const todayISO = () => new Date().toISOString().slice(0, 10);
-const iso = (d) => d.toISOString().slice(0, 10);
 const cls = (...xs) => xs.filter(Boolean).join(" ");
 
 const statusTint = (s) => {
@@ -70,6 +85,7 @@ const statusTint = (s) => {
 
 const fmtDatePretty = (isoStr) =>
   new Date(isoStr + "T00:00:00").toLocaleDateString("en-IN", {
+    timeZone: TZ,
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -96,6 +112,123 @@ const endOfWeek = (d) => {
 };
 const firstOfMonthGrid = (d) => startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1));
 const lastOfMonthGrid = (d) => endOfWeek(new Date(d.getFullYear(), d.getMonth() + 1, 0));
+
+/* ===================== RESCHEDULE MODAL (NEW) ===================== */
+const RescheduleModal = ({ open, onClose, row, onSave }) => {
+  const [reschedDate, setReschedDate] = useState("");
+  const [reschedTime, setReschedTime] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (open) {
+      setReschedDate("");
+      setReschedTime("");
+      setError("");
+      setSaving(false);
+    }
+  }, [open]);
+
+  if (!open || !row) return null;
+
+  const reschedTimeOptions = SLOT_DEFS.map((s) => ({ value: s, label: toLabel(s) }));
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!reschedDate || !reschedTime) {
+      setError("Please select both date and time.");
+      return;
+    }
+    try {
+      setSaving(true);
+      await onSave?.({
+        rescheduled_date: reschedDate,
+        rescheduled_time: reschedTime,
+      });
+      onClose?.();
+    } catch (err) {
+      setError(err?.message || "Failed to reschedule");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" onClick={() => !saving && onClose?.()} />
+      <div className="relative z-10 w-full max-w-md bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden">
+        <div className="bg-indigo-600 p-4 text-white">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold">Reschedule Appointment</h3>
+            <button
+              type="button"
+              className="rounded-full p-1 hover:bg-indigo-500 transition-colors"
+              onClick={() => !saving && onClose?.()}
+              aria-label="Close"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
+          </div>
+          <p className="text-indigo-100 text-sm">Patient: {row?.patient_name} • {row?.date} {row?.time_slot}</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+          {error && (
+            <div className="mb-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+              {error}
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">New Date *</label>
+              <input
+                type="date"
+                value={reschedDate}
+                onChange={(e) => setReschedDate(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">New Time *</label>
+              <Select
+                options={reschedTimeOptions}
+                value={reschedTime ? { value: reschedTime, label: toLabel(reschedTime) } : null}
+                onChange={(selected) => setReschedTime(selected.value)}
+                className="react-select-container"
+                classNamePrefix="react-select"
+                placeholder="Select time"
+                isSearchable={false}
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              className="rounded-lg px-4 py-2 text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
+              onClick={() => !saving && onClose?.()}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className={cls(
+                "rounded-lg px-4 py-2 text-sm font-medium text-white",
+                !reschedDate || !reschedTime ? "bg-indigo-300 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700"
+              )}
+              disabled={!reschedDate || !reschedTime || saving}
+            >
+              {saving ? "Saving..." : "Confirm Reschedule"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
 
 /* ===================== NEW APPOINTMENT MODAL ===================== */
 const NewAppointmentModal = ({
@@ -377,7 +510,7 @@ const ViewToggle = ({ value, onChange }) => (
 );
 
 const CalendarHeader = ({ view, onView, date, setDate, onNew }) => {
-  const goToday = () => setDate(new Date());
+  const goToday = () => setDate(new Date(todayISO() + "T00:00:00"));
   const prev = () => {
     const d = new Date(date);
     if (view === "Day") d.setDate(d.getDate() - 1);
@@ -395,7 +528,7 @@ const CalendarHeader = ({ view, onView, date, setDate, onNew }) => {
 
   const title =
     view === "Month"
-      ? date.toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+      ? date.toLocaleDateString("en-IN", { month: "long", year: "numeric", timeZone: TZ })
       : fmtDatePretty(iso(date));
 
   return (
@@ -514,7 +647,7 @@ const WeekStrip = ({ date, eventsByDate, onPickDay }) => {
           >
             <div className="flex items-center justify-between mb-2">
               <div>
-                <div className="text-xs text-gray-500">{d.toLocaleDateString("en-IN", { weekday: "short" })}</div>
+                <div className="text-xs text-gray-500">{d.toLocaleDateString("en-IN", { weekday: "short", timeZone: TZ })}</div>
                 <div className={cls("text-sm font-semibold", isToday ? "text-indigo-700" : "text-gray-900")}>
                   {d.getDate()}
                 </div>
@@ -542,7 +675,7 @@ const WeekStrip = ({ date, eventsByDate, onPickDay }) => {
   );
 };
 
-const DayPanel = ({ dateISO, items, onStatus, onDelete }) => {
+const DayPanel = ({ dateISO, items, onStatus, onDelete, onReschedule }) => {
   const list = (items || []).slice().sort(cmpByDateTime);
   return (
     <div className="rounded-lg border border-gray-200 bg-white mt-4">
@@ -579,7 +712,11 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete }) => {
                     <select
                       className="rounded-md border border-gray-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                       value={row.status}
-                      onChange={(e) => onStatus?.(row, e.target.value)}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "Rescheduled") onReschedule?.(row);
+                        else onStatus?.(row, v);
+                      }}
                     >
                       {STATUSES.map((s) => (
                         <option key={s} value={s}>
@@ -605,7 +742,7 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete }) => {
 };
 
 /* ===================== APPOINTMENTS LIST WITH TABS ===================== */
-const AppointmentsList = ({ all, onStatus, onDelete }) => {
+const AppointmentsList = ({ all, onStatus, onDelete, onReschedule }) => {
   const [tab, setTab] = useState("Today");
   const t0 = todayISO();
 
@@ -665,7 +802,11 @@ const AppointmentsList = ({ all, onStatus, onDelete }) => {
                   <select
                     className="rounded-md border border-gray-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
                     value={row.status}
-                    onChange={(e) => onStatus?.(row, e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v === "Rescheduled") onReschedule?.(row);
+                      else onStatus?.(row, v);
+                    }}
                   >
                     {STATUSES.map((s) => (
                       <option key={s} value={s}>
@@ -715,8 +856,12 @@ const AppointmentDashboard = () => {
   const [activeTab, setActiveTab] = useState("Calendar");
   const [showNew, setShowNew] = useState(false);
 
+  // NEW: reschedule modal state
+  const [reschedTarget, setReschedTarget] = useState(null);
+  const [showResched, setShowResched] = useState(false);
+
   const [view, setView] = useState("Month");
-  const [focusDate, setFocusDate] = useState(new Date());
+  const [focusDate, setFocusDate] = useState(new Date(todayISO() + "T00:00:00"));
 
   const [allInRange, setAllInRange] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -773,7 +918,7 @@ const AppointmentDashboard = () => {
       const d1 = new Date(to);
       for (let d = new Date(d0); d <= d1; d.setDate(d.getDate() + 1)) {
         // eslint-disable-next-line no-await-in-loop
-        const rows = await apiGetAppointmentsByDate(d.toISOString().slice(0, 10));
+        const rows = await apiGetAppointmentsByDate(iso(d));
         out.push(...(Array.isArray(rows) ? rows : []));
       }
       return out;
@@ -810,13 +955,30 @@ const AppointmentDashboard = () => {
     }
   };
 
-  const onStatus = async (row, newStatus) => {
+  const handleStatusChange = async (row, newStatus) => {
     try {
       await apiUpdateAppointment(row.id, { status: newStatus });
       refreshDay();
     } catch (e) {
       setErr(e?.message || "Failed to update status");
     }
+  };
+
+  const openReschedule = (row) => {
+    setReschedTarget(row);
+    setShowResched(true);
+  };
+
+  const saveReschedule = async ({ rescheduled_date, rescheduled_time }) => {
+    if (!reschedTarget) return;
+    await apiUpdateAppointment(reschedTarget.id, {
+      status: "Rescheduled",
+      rescheduled_date,
+      rescheduled_time,
+    });
+    setShowResched(false);
+    setReschedTarget(null);
+    await refreshDay();
   };
 
   const onDelete = async (row) => {
@@ -830,8 +992,6 @@ const AppointmentDashboard = () => {
   };
 
   const allSorted = useMemo(() => (allInRange || []).slice().sort(cmpByDateTime), [allInRange]);
-
- 
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-indigo-50/60 to-gray-50">
@@ -879,8 +1039,6 @@ const AppointmentDashboard = () => {
           </div>
 
           <div className="p-4">
-            
-
             {err && (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 mb-4">
                 {err}
@@ -925,11 +1083,22 @@ const AppointmentDashboard = () => {
                     }}
                   />
                 ) : (
-                  <DayPanel dateISO={focusedISO} items={dayItems} onStatus={onStatus} onDelete={onDelete} />
+                  <DayPanel
+                    dateISO={focusedISO}
+                    items={dayItems}
+                    onStatus={handleStatusChange}
+                    onDelete={onDelete}
+                    onReschedule={openReschedule}
+                  />
                 )}
               </div>
             ) : (
-              <AppointmentsList all={allSorted} onStatus={onStatus} onDelete={onDelete} />
+              <AppointmentsList
+                all={allSorted}
+                onStatus={handleStatusChange}
+                onDelete={onDelete}
+                onReschedule={openReschedule}
+              />
             )}
           </div>
         </div>
@@ -942,6 +1111,17 @@ const AppointmentDashboard = () => {
         defaultDate={focusedISO}
         onCreated={refreshDay}
         dayAppointmentsForCapacity={eventsByDate.get(focusedISO) || []}
+      />
+
+      {/* Reschedule Modal */}
+      <RescheduleModal
+        open={showResched}
+        onClose={() => {
+          setShowResched(false);
+          setReschedTarget(null);
+        }}
+        row={reschedTarget}
+        onSave={saveReschedule}
       />
     </div>
   );
