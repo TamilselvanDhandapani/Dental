@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../CreateClient";
 import { motion } from "framer-motion";
-import { FaUser, FaSignOutAlt, FaTooth } from "react-icons/fa";
-import { Link ,useNavigate} from "react-router-dom";
+import { FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus } from "react-icons/fa";
+import { Link, useNavigate } from "react-router-dom";
 
 const Navbar = () => {
   const [user, setUser] = useState(null);
@@ -32,7 +32,6 @@ const Navbar = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-
   };
 
   return (
@@ -47,37 +46,42 @@ const Navbar = () => {
           >
             <FaTooth className="h-6 w-6 text-teal-500" />
             <Link to="/" className="ml-2 text-xl font-bold text-gray-900">
-             Gugan DentalCare
+              Gugan
+              <span> DentalCare</span>
             </Link>
           </motion.div>
-
-          {/* Navigation Links */}
-         
 
           {/* Auth Section */}
           <div className="flex items-center">
             {!user ? (
               <div className="flex space-x-2">
+                {/* Sign In - Shows icon on small screens, text + icon on larger */}
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
                   <Link
                     to="/"
-                    className="px-4 py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    className="p-2 md:px-4 md:py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center"
+                    aria-label="Sign In"
                   >
-                    Sign In
+                    <FaSignInAlt className="md:mr-2" />
+                    <span className="hidden md:inline">Sign In</span>
                   </Link>
                 </motion.div>
+                
+                {/* Sign Up - Shows icon on small screens, text + icon on larger */}
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
                   <Link
                     to="/register"
-                    className="px-4 py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700"
+                    className="p-2 md:px-4 md:py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 flex items-center"
+                    aria-label="Sign Up"
                   >
-                    Sign Up
+                    <FaUserPlus className="md:mr-2" />
+                    <span className="hidden md:inline">Sign Up</span>
                   </Link>
                 </motion.div>
               </div>
