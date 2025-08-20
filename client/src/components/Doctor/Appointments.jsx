@@ -21,11 +21,9 @@ import {
   MdUpcoming, 
   MdPendingActions, 
   MdConfirmationNumber, 
-  MdReduceCapacity,
   MdDeleteOutline,
   MdEdit,
-  MdRefresh,
-  MdSearch
+  MdRefresh
 } from "react-icons/md";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 
@@ -89,7 +87,7 @@ const toLabel = (hhmm) => {
 const isValidPhone = (v) => /^\+?\d{10,14}$/.test(String(v || "").trim());
 const cls = (...xs) => xs.filter(Boolean).join(" ");
 
-// If rescheduled, prefer rescheduled_time in displays
+// Preferred time display
 const displayTime = (row) =>
   row?.status === "Rescheduled" && row?.rescheduled_time ? row.rescheduled_time : row?.time_slot;
 
@@ -102,18 +100,6 @@ const statusTint = (s) => {
     case "No Show": return "bg-rose-100 text-rose-800 border-rose-200";
     case "Rescheduled": return "bg-slate-100 text-slate-800 border-slate-200";
     default: return "bg-gray-100 text-gray-800 border-gray-200";
-  }
-};
-
-const statusColor = (s) => {
-  switch (s) {
-    case "Pending": return "text-amber-600";
-    case "Confirmed": return "text-indigo-600";
-    case "Cancelled": return "text-rose-600";
-    case "Completed": return "text-emerald-600";
-    case "No Show": return "text-rose-600";
-    case "Rescheduled": return "text-slate-600";
-    default: return "text-gray-600";
   }
 };
 
@@ -147,7 +133,31 @@ const endOfWeek = (d) => {
 const firstOfMonthGrid = (d) => startOfWeek(new Date(d.getFullYear(), d.getMonth(), 1));
 const lastOfMonthGrid = (d) => endOfWeek(new Date(d.getFullYear(), d.getMonth() + 1, 0));
 
-// Custom styles for react-select to fix z-index issues
+/* ---------- Time logic: disable past slots in Asia/Kolkata ---------- */
+const getNowHHMMInTZ = (tz = TZ) => {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: tz,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).formatToParts(new Date());
+  const h = parts.find((p) => p.type === "hour").value;
+  const m = parts.find((p) => p.type === "minute").value;
+  return `${h}:${m}`;
+};
+
+const isPastSlot = (dateISO, hhmm, tz = TZ) => {
+  const today = todayISO();
+  if (dateISO < today) return true;               // any past day
+  if (dateISO > today) return false;              // any future day
+  // same day: compare HH:MM in the zone
+  const nowHHMM = getNowHHMMInTZ(tz);
+  return hhmm < nowHHMM;
+};
+
+/* ----------------- react-select overlap fix ----------------- */
+const portalTarget = typeof window !== "undefined" ? document.body : null;
+
 const customSelectStyles = {
   control: (provided, state) => ({
     ...provided,
@@ -163,6 +173,7 @@ const customSelectStyles = {
     ...provided,
     zIndex: 9999,
     borderRadius: '6px',
+    overflow: 'hidden',
     boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
   }),
   menuPortal: (base) => ({ ...base, zIndex: 9999 }),
@@ -256,6 +267,7 @@ const RescheduleModal = ({ open, onClose, row, onSave, getBookedForDate }) => {
                 onChange={(e) => setReschedDate(e.target.value)}
                 className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
                 required
+                min={todayISO()}
               />
             </div>
 
@@ -263,7 +275,7 @@ const RescheduleModal = ({ open, onClose, row, onSave, getBookedForDate }) => {
               <div className="flex items-center justify-between mb-2">
                 <label className="text-sm font-medium text-gray-700">New Time *</label>
                 {reschedDate ? (
-                  <span className="text-xs text-gray-500">Booked slots disabled</span>
+                  <span className="text-xs text-gray-500">Booked & past slots disabled</span>
                 ) : (
                   <span className="text-xs text-rose-600">Select a date first</span>
                 )}
@@ -271,16 +283,18 @@ const RescheduleModal = ({ open, onClose, row, onSave, getBookedForDate }) => {
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {SLOT_DEFS.map((s) => {
                   const booked = bookedSet.has(s);
+                  const past = reschedDate ? isPastSlot(reschedDate, s) : true;
+                  const disabled = !reschedDate || booked || past;
                   const active = reschedTime === s;
                   return (
                     <button
                       type="button"
                       key={s}
-                      disabled={!reschedDate || booked}
-                      onClick={() => !booked && reschedDate && setReschedTime(s)}
+                      disabled={disabled}
+                      onClick={() => !disabled && setReschedTime(s)}
                       className={cls(
                         "rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors",
-                        (!reschedDate || booked) && "cursor-not-allowed opacity-60 bg-gray-50",
+                        disabled && "cursor-not-allowed opacity-60 bg-gray-50",
                         active
                           ? "border-indigo-600 bg-indigo-100 text-indigo-700"
                           : "border-gray-300 text-gray-700 hover:bg-gray-50"
@@ -326,6 +340,7 @@ const NewAppointmentModal = ({
   defaultDate,
   onCreated,
   dayAppointmentsForCapacity = [],
+  getBookedForDate, // <--- NEW: look up bookings for the picked date
 }) => {
   const [patientName, setPatientName] = useState("");
   const [phone, setPhone] = useState("");
@@ -352,12 +367,20 @@ const NewAppointmentModal = ({
     }
   }, [open, defaultDate]);
 
+  // Booked slots for the *currently selected date*
+  const currentDayAppts = useMemo(() => {
+    if (typeof getBookedForDate === "function") {
+      return getBookedForDate(date) || [];
+    }
+    return dayAppointmentsForCapacity || [];
+  }, [getBookedForDate, date, dayAppointmentsForCapacity]);
+
   const booked = useMemo(
-    () => new Set((dayAppointmentsForCapacity || []).map((a) => a.time_slot)),
-    [dayAppointmentsForCapacity]
+    () => new Set((currentDayAppts || []).map((a) => a.time_slot)),
+    [currentDayAppts]
   );
 
-  const remaining = Math.max(0, MAX_APPTS_PER_DAY - (dayAppointmentsForCapacity?.length || 0));
+  const remaining = Math.max(0, MAX_APPTS_PER_DAY - (currentDayAppts?.length || 0));
 
   const disableSubmit =
     !patientName.trim() ||
@@ -463,6 +486,7 @@ const NewAppointmentModal = ({
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                  min={todayISO()}
                 />
               </div>
               <div>
@@ -476,6 +500,8 @@ const NewAppointmentModal = ({
                   isSearchable={false}
                   menuPlacement="auto"
                   styles={customSelectStyles}
+                  menuPortalTarget={portalTarget}
+                  menuPosition="fixed"
                 />
               </div>
             </div>
@@ -490,20 +516,23 @@ const NewAppointmentModal = ({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {SLOT_DEFS.map((s) => {
                   const bookedNow = booked.has(s);
+                  const past = isPastSlot(date, s);
+                  const disabled = bookedNow || past;
                   const active = slot === s;
                   return (
                     <button
                       type="button"
                       key={s}
-                      onClick={() => !bookedNow && setSlot(s)}
-                      disabled={bookedNow}
+                      onClick={() => !disabled && setSlot(s)}
+                      disabled={disabled}
                       className={cls(
                         "rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors",
-                        bookedNow && "cursor-not-allowed opacity-60 bg-gray-50",
+                        disabled && "cursor-not-allowed opacity-60 bg-gray-50",
                         active
                           ? "border-indigo-600 bg-indigo-100 text-indigo-700"
                           : "border-gray-300 text-gray-700 hover:bg-gray-50"
                       )}
+                      title={past ? "Time has passed" : bookedNow ? "Slot already booked" : ""}
                     >
                       {toLabel(s)}
                     </button>
@@ -524,6 +553,8 @@ const NewAppointmentModal = ({
                   isSearchable={false}
                   menuPlacement="auto"
                   styles={customSelectStyles}
+                  menuPortalTarget={portalTarget}
+                  menuPosition="fixed"
                 />
               </div>
               {status === "Rescheduled" && (
@@ -536,21 +567,27 @@ const NewAppointmentModal = ({
                       onChange={(e) => setReschedDate(e.target.value)}
                       className="rounded-lg border border-gray-300 px-3 py-2 text-sm bg-white focus:ring-indigo-500 focus:border-indigo-500"
                       required
+                      min={todayISO()}
                     />
                     <div className="col-span-2 grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {SLOT_DEFS.map((s) => {
+                        const past = reschedDate ? isPastSlot(reschedDate, s) : true;
+                        const disabled = !reschedDate || past || (getBookedForDate?.(reschedDate) || []).some(a => a.time_slot === s);
                         const active = reschedTime === s;
                         return (
                           <button
                             type="button"
                             key={s}
-                            onClick={() => setReschedTime(s)}
+                            onClick={() => !disabled && setReschedTime(s)}
+                            disabled={disabled}
                             className={cls(
                               "rounded-lg border px-2 py-1.5 text-xs font-medium transition-colors",
+                              disabled && "cursor-not-allowed opacity-60 bg-gray-50",
                               active
                                 ? "border-indigo-600 bg-indigo-100 text-indigo-700"
                                 : "border-gray-300 text-gray-700 hover:bg-gray-50"
                             )}
+                            title={!reschedDate ? "Select a date first" : past ? "Time has passed" : "Slot already booked"}
                           >
                             {toLabel(s)}
                           </button>
@@ -708,7 +745,7 @@ const MonthGrid = ({ date, eventsByDate, onPickDay }) => {
               </div>
               <div className="mt-1 space-y-1 overflow-hidden">
                 {list.slice(0, 3).map((e) => (
-                  <div key={e.id} className={cls("rounded px-1 py-0.5 text-[11px] truncate", statusTint(e.status))}>
+                  <div key={e.id} className={cls("rounded px-1 py-0.5 text-[11px] truncate border", statusTint(e.status))}>
                     <span className="font-medium">{displayTime(e)}</span> • {e.patient_name}
                   </div>
                 ))}
@@ -760,7 +797,7 @@ const WeekStrip = ({ date, eventsByDate, onPickDay }) => {
                 <div className="text-xs text-gray-400 py-2">No appointments</div>
               ) : (
                 items.map((e) => (
-                  <div key={e.id} className={cls("rounded px-2 py-1 text-xs flex items-start", statusTint(e.status))}>
+                  <div key={e.id} className={cls("rounded px-2 py-1 text-xs flex items-start border", statusTint(e.status))}>
                     <span className="font-medium mr-1">{displayTime(e)}</span>
                     <span className="truncate">{e.patient_name}</span>
                   </div>
@@ -792,12 +829,12 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete, onReschedule }) => {
         ) : (
           <div className="divide-y divide-gray-200">
             {list.map((row) => (
-              <div key={row.id} className="p-4 hover:bg-gray-50">
+              <div key={row.id} className="p-4 ">
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center space-x-2">
                       <span className="font-medium text-gray-900">{displayTime(row)}</span>
-                      <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusTint(row.status))}>
+                      <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border", statusTint(row.status))}>
                         {row.status}
                       </span>
                     </div>
@@ -807,27 +844,41 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete, onReschedule }) => {
                       <p className="text-sm text-gray-500 mt-1">{row.service_type}</p>
                     </div>
                   </div>
-                  <div className="ml-4 flex-shrink-0 flex space-x-2">
-                    <select
-                      className="rounded-md border border-gray-300 px-2 py-1 text-xs bg-white focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
-                      value={row.status}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "Rescheduled") onReschedule?.(row);
-                        else onStatus?.(row, v);
-                      }}
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+
+                  {/* Updated actions to match Appointments tab */}
+                  <div className="ml-4 flex-shrink-0 flex items-center gap-2">
+                    <div className="relative z-50 min-w-[140px]">
+                      <Select
+                        options={STATUSES.map((s) => ({ value: s, label: s }))}
+                        value={{ value: row.status, label: row.status }}
+                        onChange={(selected) => {
+                          const v = selected.value;
+                          if (v === "Rescheduled") onReschedule?.(row);
+                          else onStatus?.(row, v);
+                        }}
+                        className="text-sm"
+                        classNamePrefix="react-select"
+                        isSearchable={false}
+                        styles={customSelectStyles}
+                        menuPortalTarget={portalTarget}
+                        menuPosition="fixed"
+                      />
+                    </div>
+
                     <button
-                      className="rounded-md border border-rose-200 px-2 py-1 text-xs text-rose-700 hover:bg-rose-50"
-                      onClick={() => onDelete?.(row)}
+                      className="inline-flex items-center justify-center rounded-md border border-gray-200 p-2 text-gray-600 hover:bg-gray-100"
+                      onClick={() => onReschedule?.(row)}
+                      title="Reschedule"
                     >
-                      Delete
+                      <MdEdit className="h-4 w-4" />
+                    </button>
+
+                    <button
+                      className="inline-flex items-center justify-center rounded-md border border-rose-200 p-2 text-rose-600 hover:bg-rose-50"
+                      onClick={() => onDelete?.(row)}
+                      title="Delete"
+                    >
+                      <MdDeleteOutline className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
@@ -842,13 +893,12 @@ const DayPanel = ({ dateISO, items, onStatus, onDelete, onReschedule }) => {
 
 /* ===================== APPOINTMENTS LIST WITH TABS ===================== */
 
-const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, defaultTab = "Upcoming" }) => {
+const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, defaultTab = "today" }) => {
   const [tab, setTab] = useState(defaultTab);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [dateFilter, setDateFilter] = useState("");
 
-  // when base date changes (e.g., user selected a future date), update default tab intent
   useEffect(() => {
     setTab(defaultTab);
   }, [defaultTab, baseDateISO]);
@@ -858,14 +908,12 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
   const today = parsed.filter((r) => r.date === baseDateISO);
   const upcoming = parsed.filter((r) => r.date > baseDateISO);
 
-  // Apply filters
   const filterAppointments = (appointments) => {
     return appointments.filter(app => {
       const matchesSearch = app.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           app.phone.includes(searchTerm);
       const matchesStatus = statusFilter === "All" || app.status === statusFilter;
       const matchesDate = !dateFilter || app.date === dateFilter;
-      
       return matchesSearch && matchesStatus && matchesDate;
     });
   };
@@ -879,9 +927,9 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
   const statusOptions = [{ value: "All", label: "All Statuses" }, ...STATUSES.map((s) => ({ value: s, label: s }))];
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white overflow-hidden">
+    <div className=" bg-white">
       <div className="border-b border-gray-200 p-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="flex flex-row items-center justify-between gap-4">
           <nav className="flex -mb-px">
             {["Past", "Today", "Upcoming"].map((t) => (
               <button
@@ -903,34 +951,37 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
           </nav>
           
           <div className="flex flex-col sm:flex-row gap-2">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <MdSearch className="h-4 w-4 text-gray-400" />
-              </div>
+            {/* Search */}
+            <div className="flex items-center rounded-md border border-gray-300 bg-white px-2">
               <input
-                type="text"
-                placeholder="Search patients..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 pr-4 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
+                placeholder="Search by name or phone"
+                className="px-2 py-1 text-sm outline-none"
               />
             </div>
-            
-            <Select
-              options={statusOptions}
-              value={statusOptions.find(opt => opt.value === statusFilter) || statusOptions[0]}
-              onChange={(selected) => setStatusFilter(selected.value)}
-              className="w-40 text-sm"
-              isSearchable={false}
-              styles={customSelectStyles}
-            />
-            
+
+            {/* Status filter */}
+            <div className="min-w-[160px]">
+              <Select
+                options={statusOptions}
+                value={statusOptions.find(opt => opt.value === statusFilter) || statusOptions[0]}
+                onChange={(selected) => setStatusFilter(selected.value)}
+                className="w-40 text-sm"
+                classNamePrefix="react-select"
+                isSearchable={false}
+                styles={customSelectStyles}
+                menuPortalTarget={portalTarget}
+                menuPosition="fixed"
+              />
+            </div>
+
+            {/* Date filter */}
             <input
               type="date"
               value={dateFilter}
               onChange={(e) => setDateFilter(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="Filter by date"
+              className="rounded-md border border-gray-300 px-2 py-1 text-sm bg-white"
             />
           </div>
         </div>
@@ -945,7 +996,7 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
       ) : (
         <div className="divide-y divide-gray-200">
           {current.map((row) => (
-            <div key={row.id} className="p-4 hover:bg-gray-50 transition-colors">
+            <div key={row.id} className="py-12 px-4 hover:bg-gray-50 transition-colors border border-gray-200">
               <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -954,7 +1005,7 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
                       <IoMdTime className="mr-1 h-4 w-4" />
                       {displayTime(row)}
                     </div>
-                    <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium", statusTint(row.status))}>
+                    <span className={cls("inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border", statusTint(row.status))}>
                       {row.status}
                     </span>
                   </div>
@@ -978,7 +1029,7 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
                 </div>
                 
                 <div className="flex items-center gap-2">
-                  <div className="relative z-50 min-w-[120px]">
+                  <div className="relative z-50 min-w-[140px]">
                     <Select
                       options={STATUSES.map(s => ({ value: s, label: s }))}
                       value={{ value: row.status, label: row.status }}
@@ -988,8 +1039,11 @@ const AppointmentsList = ({ all, onStatus, onDelete, onReschedule, baseDateISO, 
                         else onStatus?.(row, v);
                       }}
                       className="text-sm"
+                      classNamePrefix="react-select"
                       isSearchable={false}
                       styles={customSelectStyles}
+                      menuPortalTarget={portalTarget}
+                      menuPosition="fixed"
                     />
                   </div>
                   
@@ -1054,7 +1108,6 @@ const AppointmentDashboard = () => {
   const [activeTab, setActiveTab] = useState("Calendar");
   const [showNew, setShowNew] = useState(false);
 
-  // reschedule modal state
   const [reschedTarget, setReschedTarget] = useState(null);
   const [showResched, setShowResched] = useState(false);
 
@@ -1080,12 +1133,14 @@ const AppointmentDashboard = () => {
   // Top stats
   const t0 = todayISO();
   const todayCount = (eventsByDate.get(t0) || []).length;
-  const next7 = (() => {
+
+  const next7Count = (() => {
     const end = new Date();
     end.setDate(end.getDate() + 6);
     const endISO = iso(end);
     return (allInRange || []).filter((r) => r.date >= t0 && r.date <= endISO).length;
   })();
+
   const pendingCount = (allInRange || []).filter((r) => r.status === "Pending").length;
   const confirmedCount = (allInRange || []).filter((r) => r.status === "Confirmed").length;
   const completedCount = (allInRange || []).filter((r) => r.status === "Completed").length;
@@ -1107,7 +1162,6 @@ const AppointmentDashboard = () => {
     return { from, to };
   }, [view, focusDate]);
 
-  // tiny wrapper to use the centralized API, with optional fallback aggregation
   const fetchRange = async (from, to) => {
     try {
       return await apiGetAppointmentsByRange(from, to);
@@ -1177,7 +1231,7 @@ const AppointmentDashboard = () => {
     });
     setShowResched(false);
     setReschedTarget(null);
-    await refreshDay();
+    await refreshDay(rescheduled_date); // jump to new date
   };
 
   const onDelete = async (row) => {
@@ -1192,14 +1246,12 @@ const AppointmentDashboard = () => {
 
   const allSorted = useMemo(() => (allInRange || []).slice().sort(cmpByDateTime), [allInRange]);
 
-  // Determine base date for Appointments tab partitioning and default tab
   const baseDateISO = (() => {
     const f = iso(focusDate);
     return f > t0 ? f : t0;
   })();
   const defaultTabForList = baseDateISO > t0 ? "Past" : "Upcoming";
 
-  // Support: booked slots getter for reschedule modal
   const getBookedForDate = (dateISO) => eventsByDate.get(dateISO) || [];
 
   return (
@@ -1229,7 +1281,7 @@ const AppointmentDashboard = () => {
           />
           <StatCard 
             title="Upcoming (7 days)" 
-            value={next7} 
+            value={next7Count} 
             accent="emerald" 
             icon={<MdUpcoming className="h-6 w-6" />} 
           />
@@ -1248,7 +1300,7 @@ const AppointmentDashboard = () => {
         </div>
 
         {/* Tabs & Content */}
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-visible">
           <div className="border-b border-gray-200 bg-gray-50/50">
             <nav className="flex -mb-px">
               {["Calendar", "Appointments"].map((tab) => (
@@ -1269,11 +1321,11 @@ const AppointmentDashboard = () => {
             </nav>
           </div>
 
-          <div className="p-6">
+          <div className="p-6 min-h-[100dvh] overflow-visible">
             {err && (
               <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 mb-4 flex items-center justify-between">
                 <span>{err}</span>
-                <button 
+                <button
                   onClick={() => refreshDay()}
                   className="inline-flex items-center text-rose-700 hover:text-rose-900"
                 >
@@ -1296,9 +1348,25 @@ const AppointmentDashboard = () => {
 
                 {loading ? (
                   <div className="flex justify-center py-8">
-                    <svg className="animate-spin h-8 w-8 text-indigo-600" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    <svg
+                      className="animate-spin h-8 w-8 text-indigo-600"
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                    >
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                      />
                     </svg>
                   </div>
                 ) : view === "Month" ? (
@@ -1350,6 +1418,7 @@ const AppointmentDashboard = () => {
         defaultDate={focusedISO}
         onCreated={refreshDay}
         dayAppointmentsForCapacity={eventsByDate.get(focusedISO) || []}
+        getBookedForDate={getBookedForDate} // <--- pass lookup function
       />
 
       {/* Reschedule Modal */}

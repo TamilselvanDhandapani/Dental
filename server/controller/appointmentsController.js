@@ -9,8 +9,9 @@ const supabaseForReq = (req) =>
 const sbError = (res, error, status = 400) =>
   res.status(status).json({ error: error?.message || String(error) });
 
+// Normalize to HH:MM 24h; clamps to 00-23 / 00-59 and pads.
 const asHHMM = (v) => {
-  if (!v) return v;
+  if (!v && v !== 0) return v;
   const m = String(v).match(/^(\d{1,2}):(\d{2})$/);
   if (!m) return v;
   const h = String(Math.min(23, Math.max(0, parseInt(m[1], 10)))).padStart(2, '0');
@@ -44,7 +45,10 @@ const mapPatch = (body = {}) => {
   set('service_type', body.service_type ?? undefined);
   set('status', body.status ?? undefined);
   set('rescheduled_date', body.rescheduled_date === null ? null : body.rescheduled_date);
-  set('rescheduled_time', body.rescheduled_time ? asHHMM(body.rescheduled_time) : (body.rescheduled_time === null ? null : undefined));
+  set('rescheduled_time',
+    body.rescheduled_time ? asHHMM(body.rescheduled_time)
+    : (body.rescheduled_time === null ? null : undefined)
+  );
   set('notes', body.notes === undefined ? undefined : (body.notes ?? null));
 
   return row;
@@ -102,6 +106,20 @@ const createAppointment = async (req, res) => {
     if (!row.date) return res.status(400).json({ error: 'date is required' });
     if (!row.time_slot) return res.status(400).json({ error: 'time_slot is required' });
 
+    // If Rescheduled, require both fields (matches DB trigger) and promote into canonical
+    if (row.status === 'Rescheduled') {
+      if (!row.rescheduled_date) {
+        return res.status(400).json({ error: 'rescheduled_date is required when status = Rescheduled' });
+      }
+      if (!row.rescheduled_time) {
+        return res.status(400).json({ error: 'rescheduled_time is required when status = Rescheduled' });
+      }
+      // Promote so listing by canonical date/time shows the updated day
+      row.date = row.rescheduled_date;
+      row.time_slot = asHHMM(row.rescheduled_time);
+      // Keep rescheduled_* for history & to satisfy DB constraint
+    }
+
     const { data, error } = await supabase
       .from('appointments')
       .insert(row)
@@ -122,14 +140,55 @@ const updateAppointment = async (req, res) => {
     const { id } = req.params;
     if (!id) return res.status(400).json({ error: 'Missing id' });
 
-    const row = mapPatch(req.body || {});
-    if (Object.keys(row).length === 0) {
+    const patch = mapPatch(req.body || {});
+    if (Object.keys(patch).length === 0) {
       return res.status(400).json({ error: 'No fields to update' });
     }
 
+    // Load current row so we can validate the merged state
+    const { data: current, error: getErr } = await supabase
+      .from('appointments')
+      .select('*')
+      .eq('id', id)
+      .single();
+
+    if (getErr?.code === 'PGRST116' || (!current && !getErr)) {
+      return res.status(404).json({ error: 'Appointment not found' });
+    }
+    if (getErr) return sbError(res, getErr);
+
+    const merged = { ...current, ...patch };
+
+    // If status will be Rescheduled, require both fields (aligns with DB trigger)
+    if (merged.status === 'Rescheduled') {
+      if (!merged.rescheduled_date) {
+        return res.status(400).json({ error: 'rescheduled_date is required when status = Rescheduled' });
+      }
+      if (!merged.rescheduled_time) {
+        return res.status(400).json({ error: 'rescheduled_time is required when status = Rescheduled' });
+      }
+    }
+
+    // Promote rescheduled_* into canonical date/time unless explicitly overridden in this patch
+    const hasReschedDate = Object.prototype.hasOwnProperty.call(patch, 'rescheduled_date') && patch.rescheduled_date;
+    const hasReschedTime = Object.prototype.hasOwnProperty.call(patch, 'rescheduled_time') && patch.rescheduled_time !== null;
+    const hasDate = Object.prototype.hasOwnProperty.call(patch, 'date');
+    const hasTime = Object.prototype.hasOwnProperty.call(patch, 'time_slot');
+
+    // Use the merged values to promote correctly even if only one of the two is present in this patch
+    if ((hasReschedDate || patch.status === 'Rescheduled') && !hasDate) {
+      patch.date = merged.rescheduled_date || patch.date || current.date;
+    }
+    if ((hasReschedTime || patch.status === 'Rescheduled') && !hasTime) {
+      patch.time_slot = asHHMM(merged.rescheduled_time || patch.time_slot || current.time_slot);
+    }
+
+    // Do NOT clear rescheduled_*; your DB trigger requires them when status='Rescheduled'
+    // and keeping them preserves metadata/history.
+
     const { data, error } = await supabase
       .from('appointments')
-      .update(row)
+      .update(patch)
       .eq('id', id)
       .select('*')
       .single();

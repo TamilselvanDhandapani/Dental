@@ -21,7 +21,7 @@ import PatientDetail from "./components/Doctor/PatientDetail";
 import VisitDetail from "./components/Doctor/VisitDetail";
 import Analytics from "./components/Doctor/Analytics";
 import FollowUps from "./components/Doctor/FollowUps";
-import Appointments from "./components/Doctor/Appointments";
+import AppointmentDashboard from "./components/Doctor/Appointments";
 
 const App = () => {
   return (
@@ -98,7 +98,7 @@ const App = () => {
           path="/appointments"
           element={
             <ProtectedRoute>
-              <Appointments />
+              <AppointmentDashboard />
             </ProtectedRoute>
           }
         />
