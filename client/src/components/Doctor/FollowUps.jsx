@@ -1,8 +1,52 @@
-import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import Select from "react-select";
 import { getOverallNextAppts } from "../../utils/api"; // calls /visits/appointments/next
 
-const PAGE_SIZE_OPTIONS = [5, 10, 20, 50];
+/* ===================== Constants ===================== */
+const PAGE_SIZE_OPTIONS = [
+  { value: 5, label: "5 / page" },
+  { value: 10, label: "10 / page" },
+  { value: 20, label: "20 / page" },
+  { value: 50, label: "50 / page" },
+];
 
+// react-select portal target to avoid overlap issues
+const portalTarget =
+  typeof window !== "undefined" ? document.body : null;
+
+// Tailwind-friendly react-select styles
+const selectStyles = {
+  control: (provided, state) => ({
+    ...provided,
+    minHeight: 38,
+    borderRadius: 8,
+    borderColor: state.isFocused ? "#6366f1" : "#E5E7EB",
+    boxShadow: state.isFocused ? "0 0 0 1px #6366f1" : "none",
+    "&:hover": { borderColor: state.isFocused ? "#6366f1" : "#CBD5E1" },
+    fontSize: 14,
+  }),
+  menu: (provided) => ({
+    ...provided,
+    zIndex: 9999,
+    borderRadius: 8,
+    overflow: "hidden",
+    boxShadow:
+      "0 10px 15px -3px rgba(0,0,0,0.1), 0 4px 6px -4px rgba(0,0,0,0.1)",
+  }),
+  option: (provided, state) => ({
+    ...provided,
+    backgroundColor: state.isSelected
+      ? "#6366f1"
+      : state.isFocused
+      ? "#EEF2FF"
+      : "white",
+    color: state.isSelected ? "white" : "#374151",
+    cursor: "pointer",
+  }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+};
+
+/* ===================== Helpers & Hooks ===================== */
 const formatDateYYYYMMDDToLocal = (d) => {
   if (!d || typeof d !== "string") return "—";
   const parts = d.split("-");
@@ -18,7 +62,6 @@ const formatDateYYYYMMDDToLocal = (d) => {
   }).format(dt);
 };
 
-/* -------------------- utilities -------------------- */
 const useDebounced = (value, delay = 300) => {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -27,6 +70,20 @@ const useDebounced = (value, delay = 300) => {
   }, [value, delay]);
   return debounced;
 };
+
+const SortIcon = ({ dir }) => (
+  <span className="inline-flex items-center">
+    {dir === "asc" ? (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M3 12l7-8 7 8H3z" />
+      </svg>
+    ) : (
+      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
+        <path d="M17 8l-7 8-7-8h14z" />
+      </svg>
+    )}
+  </span>
+);
 
 const DownloadCSV = ({ rows }) => {
   const handle = () => {
@@ -41,7 +98,6 @@ const DownloadCSV = ({ rows }) => {
     ];
     const safe = (v) => {
       const s = v == null ? "" : String(v);
-      // Escape double quotes
       return `"${s.replace(/"/g, '""')}"`;
     };
     const body = rows
@@ -75,18 +131,15 @@ const DownloadCSV = ({ rows }) => {
     <button
       onClick={handle}
       className="flex items-center justify-center gap-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 transition px-4 py-2"
+      title="Export table as CSV"
     >
       <svg
         className="h-4 w-4"
         xmlns="http://www.w3.org/2000/svg"
-        width="24"
-        height="24"
         viewBox="0 0 24 24"
         fill="none"
         stroke="currentColor"
         strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
       >
         <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
         <polyline points="7 10 12 15 17 10" />
@@ -97,32 +150,18 @@ const DownloadCSV = ({ rows }) => {
   );
 };
 
-const SortIcon = ({ dir }) => (
-  <span className="inline-flex items-center">
-    {dir === "asc" ? (
-      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M3 12l7-8 7 8H3z" />
-      </svg>
-    ) : (
-      <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
-        <path d="M17 8l-7 8-7-8h14z" />
-      </svg>
-    )}
-  </span>
-);
-
-/* -------------------- main component -------------------- */
+/* ===================== Component ===================== */
 const FollowUps = () => {
   const [rows, setRows] = useState([]); // [{ patientName, date, chiefComplaint, procedure, visitId, patientId }]
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [pageSize, setPageSize] = useState(10);
+
+  const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[1].value); // default 10
   const [page, setPage] = useState(0);
   const [searchText, setSearchText] = useState("");
   const [lastRefreshed, setLastRefreshed] = useState(null);
 
-  // client-side sort
-  const [sort, setSort] = useState({ key: "date", dir: "asc" }); // keys: date | patientName | procedure
+  const [sort, setSort] = useState({ key: "date", dir: "asc" }); // "date" | "patientName" | "procedure"
 
   const offset = page * pageSize;
   const debouncedSearch = useDebounced(searchText, 250);
@@ -151,7 +190,6 @@ const FollowUps = () => {
     fetchData();
   }, [fetchData]);
 
-  // filter then sort
   const filtered = useMemo(() => {
     if (!debouncedSearch) return rows;
     const q = debouncedSearch.toLowerCase();
@@ -180,7 +218,6 @@ const FollowUps = () => {
       const av = a?.[key] ?? "";
       const bv = b?.[key] ?? "";
       if (key === "date") {
-        // YYYY-MM-DD safe string compare
         return dir === "asc"
           ? String(av).localeCompare(String(bv))
           : String(bv).localeCompare(String(av));
@@ -202,19 +239,18 @@ const FollowUps = () => {
     });
   };
 
-  // optional actions (wire these to your router if desired)
   const openPatient = (patientId) => {
-    // e.g., navigate(`/patients/${patientId}`)
     if (!patientId) return;
+    // e.g. navigate(`/patients/${patientId}`)
     console.info("open patient", patientId);
   };
+
   const openVisit = (visitId) => {
-    // e.g., navigate(`/visits/${visitId}`)
     if (!visitId) return;
+    // e.g. navigate(`/visits/${visitId}`)
     console.info("open visit", visitId);
   };
 
-  // skeleton rows while loading
   const skeletonRows = Array.from({ length: Math.min(pageSize, 6) });
 
   return (
@@ -275,21 +311,22 @@ const FollowUps = () => {
               />
             </div>
 
-            {/* Page size */}
-            <select
-              value={pageSize}
-              onChange={(e) => {
-                setPageSize(Number(e.target.value));
-                setPage(0);
-              }}
-              className="sm:w-32 rounded-lg border border-gray-200 bg-white px-3 py-2"
-            >
-              {PAGE_SIZE_OPTIONS.map((n) => (
-                <option key={n} value={n}>
-                  {n} / page
-                </option>
-              ))}
-            </select>
+            {/* Page Size (react-select) */}
+            <div className="sm:w-40">
+              <Select
+                options={PAGE_SIZE_OPTIONS}
+                value={PAGE_SIZE_OPTIONS.find((o) => o.value === pageSize)}
+                onChange={(opt) => {
+                  setPageSize(opt.value);
+                  setPage(0);
+                }}
+                isSearchable={false}
+                styles={selectStyles}
+                classNamePrefix="react-select"
+                menuPortalTarget={portalTarget}
+                menuPosition="fixed"
+              />
+            </div>
 
             {/* Export */}
             <DownloadCSV rows={sorted} />
@@ -334,14 +371,19 @@ const FollowUps = () => {
         {/* Last refreshed */}
         <div className="px-6 pt-3 text-xs text-gray-500">
           {lastRefreshed && (
-            <>Last refreshed {new Intl.DateTimeFormat(undefined, {
-              hour: "2-digit", minute: "2-digit"
-            }).format(lastRefreshed)}</>
+            <>
+              Last refreshed{" "}
+              {new Intl.DateTimeFormat(undefined, {
+                hour: "2-digit",
+                minute: "2-digit",
+              }).format(lastRefreshed)}
+            </>
           )}
         </div>
 
-        {/* Table / List */}
+        {/* Content */}
         <div className="p-6">
+          {/* Desktop Table */}
           <div className="hidden md:block overflow-x-auto rounded-lg border border-gray-100 shadow-sm">
             <table className="w-full text-sm text-gray-700">
               <thead className="sticky top-0 z-10">
@@ -350,26 +392,30 @@ const FollowUps = () => {
                     className="py-3 px-4 font-semibold text-left cursor-pointer select-none"
                     onClick={() => toggleSort("date")}
                   >
-                    <div className="inline-flex items-center gap-1">
+                    <span className="inline-flex items-center gap-1">
                       Date {sort.key === "date" && <SortIcon dir={sort.dir} />}
-                    </div>
+                    </span>
                   </th>
                   <th
                     className="py-3 px-4 font-semibold text-left cursor-pointer select-none"
                     onClick={() => toggleSort("patientName")}
                   >
-                    <div className="inline-flex items-center gap-1">
-                      Patient {sort.key === "patientName" && <SortIcon dir={sort.dir} />}
-                    </div>
+                    <span className="inline-flex items-center gap-1">
+                      Patient{" "}
+                      {sort.key === "patientName" && <SortIcon dir={sort.dir} />}
+                    </span>
                   </th>
-                  <th className="py-3 px-4 font-semibold text-left">Chief Complaint</th>
+                  <th className="py-3 px-4 font-semibold text-left">
+                    Chief Complaint
+                  </th>
                   <th
                     className="py-3 px-4 font-semibold text-left cursor-pointer select-none"
                     onClick={() => toggleSort("procedure")}
                   >
-                    <div className="inline-flex items-center gap-1">
-                      Procedure {sort.key === "procedure" && <SortIcon dir={sort.dir} />}
-                    </div>
+                    <span className="inline-flex items-center gap-1">
+                      Procedure{" "}
+                      {sort.key === "procedure" && <SortIcon dir={sort.dir} />}
+                    </span>
                   </th>
                   <th className="py-3 px-4 font-semibold text-right">Actions</th>
                 </tr>
@@ -422,8 +468,12 @@ const FollowUps = () => {
                       <td className="py-3 px-4 whitespace-nowrap font-medium">
                         {formatDateYYYYMMDDToLocal(r.date)}
                       </td>
-                      <td className="py-3 px-4">{r.patientName || <span className="text-gray-400">—</span>}</td>
-                      <td className="py-3 px-4">{r.chiefComplaint || <span className="text-gray-400">—</span>}</td>
+                      <td className="py-3 px-4">
+                        {r.patientName || <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        {r.chiefComplaint || <span className="text-gray-400">—</span>}
+                      </td>
                       <td className="py-3 px-4">
                         {r.procedure ? (
                           <span className="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 px-2 py-0.5 text-xs">
@@ -463,7 +513,10 @@ const FollowUps = () => {
           <div className="md:hidden space-y-3">
             {loading &&
               skeletonRows.map((_, i) => (
-                <div key={`skm-${i}`} className="rounded-lg border border-gray-100 p-4 shadow-sm">
+                <div
+                  key={`skm-${i}`}
+                  className="rounded-lg border border-gray-100 p-4 shadow-sm"
+                >
                   <div className="h-4 w-28 bg-slate-200 animate-pulse rounded mb-2" />
                   <div className="h-4 w-40 bg-slate-200 animate-pulse rounded mb-2" />
                   <div className="h-4 w-48 bg-slate-200 animate-pulse rounded mb-3" />
@@ -475,7 +528,9 @@ const FollowUps = () => {
               ))}
 
             {!loading && !error && sorted.length === 0 && (
-              <div className="text-center text-gray-400 py-8">No upcoming follow-ups</div>
+              <div className="text-center text-gray-400 py-8">
+                No upcoming follow-ups
+              </div>
             )}
 
             {!loading &&
@@ -485,8 +540,12 @@ const FollowUps = () => {
                   key={`m-${r.visitId}-${r.date}-${r.procedure || ""}`}
                   className="rounded-lg border border-gray-100 p-4 shadow-sm bg-white"
                 >
-                  <div className="text-xs text-gray-500">{formatDateYYYYMMDDToLocal(r.date)}</div>
-                  <div className="text-base font-semibold text-gray-900">{r.patientName || "—"}</div>
+                  <div className="text-xs text-gray-500">
+                    {formatDateYYYYMMDDToLocal(r.date)}
+                  </div>
+                  <div className="text-base font-semibold text-gray-900">
+                    {r.patientName || "—"}
+                  </div>
                   <div className="text-sm text-gray-700 mt-1">
                     <span className="font-medium">Complaint:</span>{" "}
                     {r.chiefComplaint || "—"}
@@ -527,7 +586,8 @@ const FollowUps = () => {
           {/* Pagination */}
           <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4">
             <div className="text-sm text-gray-500">
-              Page <span className="font-semibold text-indigo-700">{page + 1}</span>
+              Page{" "}
+              <span className="font-semibold text-indigo-700">{page + 1}</span>
             </div>
             <div className="flex gap-2">
               <button
