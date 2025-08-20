@@ -1,23 +1,38 @@
 // routes/analyticsRoutes.js
 const express = require('express');
-const router = express.Router();
 const {
-    patientsByYear,
+  // Patients
+  patientsByYear,
   patientsByYearMonth,
   patientsByYearGender,
+  patientsByAgeGroup,
+
+  // Visits
   visitsByYear,
   visitsByMonth,
-  patientsByAgeGroup,
-} = require('../controller/analyticsController');
 
-// All endpoints require Auth header (Supabase JWT)
-router.get('/by-year', patientsByYear);
-router.get('/by-year-month', patientsByYearMonth);
-router.get('/by-year-gender', patientsByYearGender);
+  // Revenue
+  revenueByMonth,
+  revenueByYear,
+  collectionsRateByMonth,
+  revenueRolling12m,
+} = require('../controller/analyticsController'); // <- folder name matches "controllers"
+const router = express.Router();
 
-router.get('/by-year', visitsByYear);
-router.get('/by-month', visitsByMonth);
+/* --------------------------- PATIENTS --------------------------- */
+router.get('/patients/by-year', patientsByYear);
+router.get('/patients/by-year-month', patientsByYearMonth);
+router.get('/patients/by-year-gender', patientsByYearGender);
+router.get('/patients/by-age-group', patientsByAgeGroup);
 
-router.get('/by-age-group', patientsByAgeGroup);
+/* ---------------------------- VISITS ---------------------------- */
+router.get('/visits/by-year', visitsByYear);
+router.get('/visits/by-month', visitsByMonth);
+
+/* ---------------------------- REVENUE --------------------------- */
+router.get('/revenue/by-month', revenueByMonth);
+router.get('/revenue/by-year', revenueByYear);
+router.get('/revenue/collections-rate-by-month', collectionsRateByMonth);
+router.get('/revenue/rolling-12m', revenueRolling12m);
 
 module.exports = router;

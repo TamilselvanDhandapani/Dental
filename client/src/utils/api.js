@@ -163,35 +163,60 @@ export const getOverallNextAppts = (q = {}) =>
   authedFetch(`/visits/appointments/next`, { query: q });
 
 /* -------------------------------- Analytics ------------------------------ */
-
-
+/* Patients */
 export const getPatientsByYear = () =>
-  authedFetch('/analytics/by-year');
+  authedFetch('/analytics/patients/by-year');
 
 export const getPatientsByYearMonth = (year) =>
-  authedFetch('/analytics/by-year-month', {
-    query: year ? { year } : {},
-  });
+  authedFetch('/analytics/patients/by-year-month', { query: year ? { year } : {} });
 
 export const getPatientsByYearGender = (year) =>
-  authedFetch('/analytics/by-year-gender', {
-    query: year ? { year } : {},
-  });
+  authedFetch('/analytics/patients/by-year-gender', { query: year ? { year } : {} });
 
 export const getPatientsByAgeGroup = () =>
-  authedFetch('/analytics/by-age-group');
+  authedFetch('/analytics/patients/by-age-group');
 
-export const getVisitsByYear = () =>
-  authedFetch('/analytics/by-year');
+/* Visits (now support optional tz) */
+export const getVisitsByYear = ({ tz } = {}) =>
+  authedFetch('/analytics/visits/by-year', { query: tz ? { tz } : {} });
 
-export const getVisitsByMonth = (year) =>
-  authedFetch('/analytics/by-month', {
-    query: year ? { year } : {},
+export const getVisitsByMonth = ({ year, tz } = {}) =>
+  authedFetch('/analytics/visits/by-month', {
+    query: {
+      ...(year ? { year } : {}),
+      ...(tz ? { tz } : {}),
+    },
   });
 
-// Appointments API List
+/* Revenue (improved set) */
+export const getRevenueByMonth = ({ year, tz } = {}) =>
+  authedFetch('/analytics/revenue/by-month', {
+    query: {
+      ...(year ? { year } : {}),
+      ...(tz ? { tz } : {}),
+    },
+  });
 
+export const getRevenueByYear = ({ tz } = {}) =>
+  authedFetch('/analytics/revenue/by-year', { query: tz ? { tz } : {} });
 
+export const getCollectionsRateByMonth = ({ year, tz } = {}) =>
+  authedFetch('/analytics/revenue/collections-rate-by-month', {
+    query: {
+      ...(year ? { year } : {}),
+      ...(tz ? { tz } : {}),
+    },
+  });
+
+export const getRevenueRolling12m = ({ end, tz } = {}) =>
+  authedFetch('/analytics/revenue/rolling-12m', {
+    query: {
+      ...(end ? { end } : {}),
+      ...(tz ? { tz } : {}),
+    },
+  });
+
+/* ------------------------ Appointments API List -------------------------- */
 export const listAppointments = (q = {}) =>
   authedFetch('/appointments', { query: q });
 
