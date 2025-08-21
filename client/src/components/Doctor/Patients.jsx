@@ -34,7 +34,6 @@ const Patients = () => {
       try {
         setLoading(true);
         setErr("");
-        // Your backend supports limit/offset; add server search later if needed
         const rows = await getPatients({ limit: 500, offset: 0 });
         if (!mounted) return;
         setPatients(Array.isArray(rows) ? rows : []);
@@ -63,90 +62,155 @@ const Patients = () => {
   }, [patients, query]);
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center justify-between px-6 mb-5">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Patients</h1>
-            <p className="text-sm text-gray-500">All patients you’ve created</p>
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8">
+          <div className="mb-4 sm:mb-0">
+            <h1 className="text-3xl font-bold text-gray-900">Patients</h1>
+            <p className="text-sm text-gray-600 mt-2">All patients in your care</p>
           </div>
-          {/* space for future actions */}
+          <button className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 flex items-center justify-center">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            </svg>
+            New Patient
+          </button>
         </div>
 
-        <div className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden">
-          {/* Toolbar */}
-          <div className="p-4 border-b border-gray-100 flex items-center gap-3">
-            <div className="flex-1">
+        {/* Search and filter card */}
+        <div className="bg-white rounded-xl shadow-sm p-5 mb-6 border border-gray-100">
+          <div className="flex flex-col md:flex-row md:items-center gap-4">
+            <div className="flex-1 relative">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
+                </svg>
+              </div>
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search by name, phone, or email…"
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                placeholder="Search patients by name, phone, or email…"
+                className="block w-full pl-10 pr-3 py-2.5 border border-gray-200 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 bg-gray-50 text-gray-900 placeholder-gray-500 transition-colors duration-200"
               />
             </div>
-            <div className="text-xs text-gray-500">
-              {filtered.length} of {patients.length}
+            <div className="flex items-center gap-3">
+              <button className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                </svg>
+                Filters
+              </button>
+              <div className="text-sm text-gray-500 bg-gray-100 px-3 py-1.5 rounded-lg">
+                {filtered.length} of {patients.length}
+              </div>
             </div>
-          </div>
-
-          {/* Table */}
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gender</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Age</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Phone</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Created</th>
-                </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {loading && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
-                      Loading…
-                    </td>
-                  </tr>
-                )}
-                {err && !loading && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-red-600">
-                      {err}
-                    </td>
-                  </tr>
-                )}
-                {!loading && !err && filtered.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-500">
-                      No patients found.
-                    </td>
-                  </tr>
-                )}
-                {!loading &&
-                  !err &&
-                  filtered.map((p) => (
-                    <tr
-                      key={p.id}
-                      className="hover:bg-indigo-50 cursor-pointer"
-                      onClick={() => navigate(`/patients/${p.id}`)}
-                    >
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {p.first_name} {p.last_name}
-                      </td>
-                      <td className="px-4 py-3 text-sm">{p.gender || "—"}</td>
-                      <td className="px-4 py-3 text-sm">{calcAge(p.dob) || "—"}</td>
-                      <td className="px-4 py-3 text-sm">{p.phone || "—"}</td>
-                      <td className="px-4 py-3 text-sm">{p.email || "—"}</td>
-                      <td className="px-4 py-3 text-sm">{formatDate(p.created_at)}</td>
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
           </div>
         </div>
 
+        {/* Patient cards grid */}
+        {loading && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {[1, 2, 3, 4, 5, 6].map((item) => (
+              <div key={item} className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 animate-pulse">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="h-12 w-12 bg-gray-200 rounded-full"></div>
+                  <div className="flex-1">
+                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <div className="h-3 bg-gray-200 rounded"></div>
+                  <div className="h-3 bg-gray-200 rounded w-5/6"></div>
+                  <div className="h-3 bg-gray-200 rounded w-4/6"></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {err && !loading && (
+          <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load patients</h3>
+            <p className="text-gray-600 mb-4">{err}</p>
+            <button className="text-indigo-600 hover:text-indigo-800 font-medium" onClick={() => window.location.reload()}>
+              Try again
+            </button>
+          </div>
+        )}
+
+        {!loading && !err && filtered.length === 0 && (
+          <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-100">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No patients found</h3>
+            <p className="text-gray-600 mb-4">Try adjusting your search or filter to find what you're looking for.</p>
+            <button 
+              className="text-indigo-600 hover:text-indigo-800 font-medium"
+              onClick={() => setQuery("")}
+            >
+              Clear search
+            </button>
+          </div>
+        )}
+
+        {!loading && !err && filtered.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {filtered.map((p) => (
+              <div 
+                key={p.id} 
+                className="bg-white rounded-xl shadow-sm p-5 border border-gray-100 hover:shadow-md transition-shadow duration-200 cursor-pointer group"
+                onClick={() => navigate(`/patients/${p.id}`)}
+              >
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="h-12 w-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-medium text-lg group-hover:bg-indigo-200 transition-colors duration-200">
+                    {p.first_name?.[0]}{p.last_name?.[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-gray-900 truncate">{p.first_name} {p.last_name}</h3>
+                    <p className="text-sm text-gray-500 truncate">{p.gender || "—"} • {calcAge(p.dob) || "—"} years</p>
+                  </div>
+                  <span className="bg-green-100 text-green-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Active</span>
+                </div>
+                
+                <div className="space-y-2 mb-5">
+                  <div className="flex items-center text-sm text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                    </svg>
+                    <span>{p.phone || "No phone"}</span>
+                  </div>
+                  <div className="flex items-center text-sm text-gray-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                    <span className="truncate">{p.email || "No email"}</span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between pt-4 border-t border-gray-100">
+                  <span className="text-xs text-gray-500">Added {formatDate(p.created_at)}</span>
+                  <div className="flex space-x-2">
+                    <button className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors duration-200">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                      </svg>
+                    </button>
+                    <button className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors duration-200">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

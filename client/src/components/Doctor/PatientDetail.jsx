@@ -71,6 +71,7 @@ const PatientDetail = () => {
   const [visits, setVisits] = useState([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  const [activeTab, setActiveTab] = useState("profile");
 
   useEffect(() => {
     let mounted = true;
@@ -141,305 +142,560 @@ const PatientDetail = () => {
     return chips;
   }, [mh]);
 
+  // Calculate financial summary
+  const financialSummary = useMemo(() => {
+    let totalAmount = 0;
+    let totalPaid = 0;
+    let totalDue = 0;
+
+    visits.forEach(visit => {
+      if (Array.isArray(visit.procedures)) {
+        visit.procedures.forEach(proc => {
+          const amount = Number(proc.total || 0);
+          const paid = Number(proc.paid || 0);
+          const due = amount - paid;
+          
+          totalAmount += amount;
+          totalPaid += paid;
+          totalDue += due;
+        });
+      }
+    });
+
+    return { totalAmount, totalPaid, totalDue };
+  }, [visits]);
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between px-6 mb-4">
-          <div>
-            <h1 className="text-2xl font-semibold text-gray-900">Patient Details</h1>
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-8">
+          <div className="mb-4 sm:mb-0">
+            <button
+              onClick={() => navigate("/patients")}
+              className="inline-flex items-center text-sm text-gray-600 hover:text-gray-900 mb-4 transition-colors duration-200"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+              Back to Patients
+            </button>
+            <h1 className="text-3xl font-bold text-gray-900">Patient Details</h1>
             {patient && (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-gray-600 mt-2">
                 {patient.first_name} {patient.last_name}
               </p>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => navigate("/patients")}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-          >
-            Back to list
-          </button>
+          
+          {patient && (
+            <div className="flex items-center gap-3">
+              <button className="px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                </svg>
+                Edit Patient
+              </button>
+              <button className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors duration-200 flex items-center">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+                New Visit
+              </button>
+            </div>
+          )}
         </div>
 
         {loading && (
-          <div className="mx-6 bg-white border border-gray-100 rounded-xl p-8 text-center text-sm text-gray-500">
-            Loading…
+          <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100">
+            <div className="flex flex-col items-center justify-center py-10">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mb-4"></div>
+              <p className="text-gray-600">Loading patient details...</p>
+            </div>
           </div>
         )}
 
         {err && !loading && (
-          <div className="mx-6 bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
-            {err}
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="rounded-full bg-red-100 p-3 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Failed to load patient</h3>
+              <p className="text-gray-600 mb-4 max-w-md">{err}</p>
+              <button 
+                onClick={() => window.location.reload()}
+                className="text-indigo-600 hover:text-indigo-800 font-medium flex items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Try again
+              </button>
+            </div>
           </div>
         )}
 
         {!loading && !err && !patient && (
-          <div className="mx-6 bg-white border border-gray-100 rounded-xl p-8 text-center text-sm text-gray-500">
-            Patient not found.
+          <div className="bg-white rounded-xl shadow-sm p-8 border border-gray-100">
+            <div className="flex flex-col items-center justify-center py-10 text-center">
+              <div className="rounded-full bg-gray-100 p-3 mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <h3 className="text-lg font-medium text-gray-900 mb-2">Patient not found</h3>
+              <p className="text-gray-600 mb-4">The patient you're looking for doesn't exist.</p>
+              <button 
+                onClick={() => navigate("/patients")}
+                className="text-indigo-600 hover:text-indigo-800 font-medium flex items-center"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back to patients list
+              </button>
+            </div>
           </div>
         )}
 
         {patient && (
-          <div className="mx-6 space-y-8">
-            {/* Patient Profile */}
-            <section className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Patient Profile</h2>
-              </div>
-              <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-500">Full Name</p>
-                  <p className="font-medium">
+          <div className="space-y-6">
+            {/* Patient Summary Card */}
+            <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
+              <div className="flex flex-col md:flex-row md:items-center gap-6">
+                <div className="flex-shrink-0">
+                  <div className="h-20 w-20 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-bold text-2xl">
+                    {patient.first_name?.[0]}{patient.last_name?.[0]}
+                  </div>
+                </div>
+                
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl font-bold text-gray-900 truncate">
                     {patient.first_name} {patient.last_name}
-                  </p>
+                  </h2>
+                  <div className="flex flex-wrap items-center gap-3 mt-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                      </svg>
+                      {displayText(patient.gender)}
+                    </span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      {calcAge(patient.dob) || "—"} years
+                    </span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                      {displayText(patient.phone)}
+                    </span>
+                  </div>
+                  <p className="text-gray-600 mt-2 truncate">{displayText(patient.email)}</p>
                 </div>
-                <div>
-                  <p className="text-sm text-gray-500">Date of Birth</p>
-                  <p className="font-medium">{formatDate(patient.dob)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Age</p>
-                  <p className="font-medium">
-                    {calcAge(patient.dob) || "—"}{calcAge(patient.dob) ? " years" : ""}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Gender</p>
-                  <p className="font-medium">{displayText(patient.gender)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Phone</p>
-                  <p className="font-medium">{displayText(patient.phone)}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500">Email</p>
-                  <p className="font-medium">{displayText(patient.email)}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <p className="text-sm text-gray-500">Address</p>
-                  <p className="font-medium">{address || "—"}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <p className="text-sm text-gray-500">Occupation</p>
-                  <p className="font-medium">{displayText(patient.occupation)}</p>
-                </div>
-                <div className="md:col-span-2">
-                  <p className="text-sm text-gray-500">Emergency Contact</p>
-                  <p className="font-medium">
-                    {displayText(patient.emergency_contact?.name)}
-                    {patient.emergency_contact?.relation ? ` (${patient.emergency_contact.relation})` : ""}
-                    {patient.emergency_contact?.phone ? ` — ${patient.emergency_contact.phone}` : ""}
-                  </p>
+                
+                <div className="flex flex-col items-end">
+                  <div className="text-sm text-gray-500">Last visit</div>
+                  <div className="text-sm font-medium text-gray-900">
+                    {visits.length > 0 ? formatDateTime(visits[0].visit_at) : "No visits"}
+                  </div>
+                  <div className="mt-4 flex items-center">
+                    <span className="text-sm font-medium text-gray-700 mr-2">Status:</span>
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                      Active
+                    </span>
+                  </div>
                 </div>
               </div>
-            </section>
+            </div>
 
-            {/* Medical History */}
-            <section className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100">
-                <h2 className="text-lg font-semibold text-gray-900">Medical History</h2>
+            {/* Financial Summary Card */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                <div className="flex items-center">
+                  <div className="rounded-lg bg-indigo-100 p-3 mr-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Total Amount</p>
+                    <p className="text-2xl font-bold text-gray-900">{inr(financialSummary.totalAmount)}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                <div className="flex items-center">
+                  <div className="rounded-lg bg-green-100 p-3 mr-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Total Paid</p>
+                    <p className="text-2xl font-bold text-green-600">{inr(financialSummary.totalPaid)}</p>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-white rounded-xl shadow-sm p-5 border border-gray-100">
+                <div className="flex items-center">
+                  <div className="rounded-lg bg-red-100 p-3 mr-4">
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Total Due</p>
+                    <p className="text-2xl font-bold text-red-600">{inr(financialSummary.totalDue)}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+              <div className="border-b border-gray-200">
+                <nav className="flex -mb-px">
+                  <button
+                    onClick={() => setActiveTab("profile")}
+                    className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                      activeTab === "profile"
+                        ? "border-indigo-500 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                  >
+                    Profile
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("medical")}
+                    className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                      activeTab === "medical"
+                        ? "border-indigo-500 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                  >
+                    Medical History
+                  </button>
+                  <button
+                    onClick={() => setActiveTab("visits")}
+                    className={`py-4 px-6 text-sm font-medium border-b-2 ${
+                      activeTab === "visits"
+                        ? "border-indigo-500 text-indigo-600"
+                        : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                    }`}
+                  >
+                    Visits ({visits.length})
+                  </button>
+                </nav>
               </div>
 
-              {!mh ? (
-                <div className="px-6 py-6 text-sm text-gray-500">No medical history on file.</div>
-              ) : (
-                <div className="px-6 py-5 grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-500">Surgery/Hospitalization (last 5y)</p>
-                    <p className="font-medium">
-                      {displayYesNo(mh.surgery_or_hospitalized)}
-                      {mh.surgery_or_hospitalized === "Yes" && mh.surgery_details
-                        ? ` — ${displayText(mh.surgery_details)}`
-                        : ""}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-500">Fever/Cold/Cough (current)</p>
-                    <p className="font-medium">
-                      {displayYesNo(mh.fever_cold_cough)}
-                      {mh.fever_cold_cough === "Yes" && mh.fever_details
-                        ? ` — ${displayText(mh.fever_details)}`
-                        : ""}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-500">Abnormal Bleeding</p>
-                    <p className="font-medium">
-                      {displayYesNo(mh.abnormal_bleeding_history)}
-                      {mh.abnormal_bleeding_history === "Yes" && mh.abnormal_bleeding_details
-                        ? ` — ${displayText(mh.abnormal_bleeding_details)}`
-                        : ""}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-500">Taking Medicine</p>
-                    <p className="font-medium">
-                      {displayYesNo(mh.taking_medicine)}
-                      {mh.taking_medicine === "Yes" && mh.medicine_details
-                        ? ` — ${displayText(mh.medicine_details)}`
-                        : ""}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-sm text-gray-500">Medication Allergy</p>
-                    <p className="font-medium">
-                      {displayYesNo(mh.medication_allergy)}
-                      {mh.medication_allergy === "Yes" && mh.medication_allergy_details
-                        ? ` — ${displayText(mh.medication_allergy_details)}`
-                        : ""}
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <p className="text-sm text-gray-500">Past Dental History</p>
-                    <p className="font-medium">{displayText(mh.past_dental_history)}</p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <p className="text-sm text-gray-500 mb-2">Medical Problems</p>
-                    <div className="flex flex-wrap gap-2">
-                      {problemChips.length ? (
-                        problemChips.map((label, i) => (
-                          <span
-                            key={i}
-                            className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-                          >
-                            {label}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-gray-500">None reported</span>
-                      )}
+              <div className="p-6">
+                {/* Profile Tab */}
+                {activeTab === "profile" && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="md:col-span-2">
+                      <h3 className="text-lg font-medium text-gray-900 mb-4">Personal Information</h3>
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Full Name</p>
+                      <p className="font-medium text-gray-900">
+                        {patient.first_name} {patient.last_name}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Date of Birth</p>
+                      <p className="font-medium text-gray-900">{formatDate(patient.dob)}</p>
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Age</p>
+                      <p className="font-medium text-gray-900">
+                        {calcAge(patient.dob) || "—"}{calcAge(patient.dob) ? " years" : ""}
+                      </p>
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Gender</p>
+                      <p className="font-medium text-gray-900">{displayText(patient.gender)}</p>
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Phone</p>
+                      <p className="font-medium text-gray-900">{displayText(patient.phone)}</p>
+                    </div>
+                    
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Email</p>
+                      <p className="font-medium text-gray-900">{displayText(patient.email)}</p>
+                    </div>
+                    
+                    <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Address</p>
+                      <p className="font-medium text-gray-900">{address || "—"}</p>
+                    </div>
+                    
+                    <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Occupation</p>
+                      <p className="font-medium text-gray-900">{displayText(patient.occupation)}</p>
+                    </div>
+                    
+                    <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-1">Emergency Contact</p>
+                      <p className="font-medium text-gray-900">
+                        {displayText(patient.emergency_contact?.name)}
+                        {patient.emergency_contact?.relation ? ` (${patient.emergency_contact.relation})` : ""}
+                        {patient.emergency_contact?.phone ? ` — ${patient.emergency_contact.phone}` : ""}
+                      </p>
                     </div>
                   </div>
-                </div>
-              )}
-            </section>
+                )}
 
-            {/* Visits */}
-            <section className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-                <h2 className="text-lg font-semibold text-gray-900">Visits</h2>
-                <span className="text-xs text-gray-500">{visits.length} record(s)</span>
-              </div>
-
-              {visits.length === 0 ? (
-                <div className="px-6 py-6 text-sm text-gray-500">No visits recorded.</div>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {visits.map((v) => {
-                    const procs = Array.isArray(v.procedures) ? v.procedures : [];
-                    const sum = procs.reduce(
-                      (acc, r) => {
-                        const t = Number(r.total || 0);
-                        const p = Number(r.paid || 0);
-                        return { total: acc.total + t, paid: acc.paid + p, due: acc.due + Math.max(t - p, 0) };
-                      },
-                      { total: 0, paid: 0, due: 0 }
-                    );
-                    return (
-                      <div key={v.id} className="px-6 py-5">
-                        <div className="flex items-center justify-between flex-wrap gap-2">
-                          <div className="font-medium text-gray-900" title={v.id}>
-                            {formatDateTime(v.visit_at)}
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/visits/${v.id}`)}
-                            className="rounded-md border border-gray-300 px-3 py-1.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
-                            title="View visit details"
-                          >
-                            View
-                          </button>
+                {/* Medical History Tab */}
+                {activeTab === "medical" && (
+                  <div>
+                    {!mh ? (
+                      <div className="text-center py-10">
+                        <div className="rounded-full bg-gray-100 p-4 inline-flex mb-4">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No medical history on file</h3>
+                        <p className="text-gray-600">This patient hasn't provided any medical history information yet.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="md:col-span-2">
+                          <h3 className="text-lg font-medium text-gray-900 mb-4">Medical History</h3>
+                        </div>
+                        
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Surgery/Hospitalization (last 5y)</p>
+                          <p className="font-medium text-gray-900">
+                            {displayYesNo(mh.surgery_or_hospitalized)}
+                            {mh.surgery_or_hospitalized === "Yes" && mh.surgery_details
+                              ? ` — ${displayText(mh.surgery_details)}`
+                              : ""}
+                          </p>
                         </div>
 
-                        <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <p className="text-sm text-gray-500">Chief Complaint</p>
-                            <p className="font-medium">{displayText(v.chief_complaint)}</p>
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Fever/Cold/Cough (current)</p>
+                          <p className="font-medium text-gray-900">
+                            {displayYesNo(mh.fever_cold_cough)}
+                            {mh.fever_cold_cough === "Yes" && mh.fever_details
+                              ? ` — ${displayText(mh.fever_details)}`
+                              : ""}
+                          </p>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Abnormal Bleeding</p>
+                          <p className="font-medium text-gray-900">
+                            {displayYesNo(mh.abnormal_bleeding_history)}
+                            {mh.abnormal_bleeding_history === "Yes" && mh.abnormal_bleeding_details
+                              ? ` — ${displayText(mh.abnormal_bleeding_details)}`
+                              : ""}
+                          </p>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Taking Medicine</p>
+                          <p className="font-medium text-gray-900">
+                            {displayYesNo(mh.taking_medicine)}
+                            {mh.taking_medicine === "Yes" && mh.medicine_details
+                              ? ` — ${displayText(mh.medicine_details)}`
+                              : ""}
+                          </p>
+                        </div>
+
+                        <div className="bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Medication Allergy</p>
+                          <p className="font-medium text-gray-900">
+                            {displayYesNo(mh.medication_allergy)}
+                            {mh.medication_allergy === "Yes" && mh.medication_allergy_details
+                              ? ` — ${displayText(mh.medication_allergy_details)}`
+                              : ""}
+                          </p>
+                        </div>
+
+                        <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Past Dental History</p>
+                          <p className="font-medium text-gray-900">{displayText(mh.past_dental_history)}</p>
+                        </div>
+
+                        <div className="md:col-span-2 bg-gray-50 rounded-lg p-4">
+                          <p className="text-sm font-medium text-gray-500 mb-2">Medical Problems</p>
+                          <div className="flex flex-wrap gap-2">
+                            {problemChips.length ? (
+                              problemChips.map((label, i) => (
+                                <span
+                                  key={i}
+                                  className="px-3 py-1 bg-blue-100 text-blue-800 text-sm rounded-full font-medium"
+                                >
+                                  {label}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-gray-500">None reported</span>
+                            )}
                           </div>
-                          <div>
-                            <p className="text-sm text-gray-500">Duration & Onset</p>
-                            <p className="font-medium">{displayText(v.duration_onset)}</p>
-                          </div>
-                          <div>
-                            <p className="text-sm text-gray-500">Trigger Factors</p>
-                            <div className="flex flex-wrap gap-2 mt-1">
-                              {Array.isArray(v.trigger_factors) && v.trigger_factors.length ? (
-                                v.trigger_factors.map((t, i) => (
-                                  <span
-                                    key={i}
-                                    className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full"
-                                  >
-                                    {t}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Visits Tab */}
+                {activeTab === "visits" && (
+                  <div>
+                    {visits.length === 0 ? (
+                      <div className="text-center py-10">
+                        <div className="rounded-full bg-gray-100 p-4 inline-flex mb-4">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                          </svg>
+                        </div>
+                        <h3 className="text-lg font-medium text-gray-900 mb-2">No visits recorded</h3>
+                        <p className="text-gray-600">This patient hasn't had any visits yet.</p>
+                        <button className="mt-4 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors duration-200 inline-flex items-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                          </svg>
+                          Schedule First Visit
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-5">
+                        {visits.map((v) => {
+                          const procs = Array.isArray(v.procedures) ? v.procedures : [];
+                          const sum = procs.reduce(
+                            (acc, r) => {
+                              const t = Number(r.total || 0);
+                              const p = Number(r.paid || 0);
+                              return { total: acc.total + t, paid: acc.paid + p, due: acc.due + Math.max(t - p, 0) };
+                            },
+                            { total: 0, paid: 0, due: 0 }
+                          );
+                          return (
+                            <div key={v.id} className="bg-gray-50 rounded-xl p-5 border border-gray-200">
+                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                                <div>
+                                  <h4 className="font-semibold text-gray-900">{formatDateTime(v.visit_at)}</h4>
+                                  <p className="text-sm text-gray-600">Visit ID: {v.id}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                    sum.due > 0 ? "bg-yellow-100 text-yellow-800" : "bg-green-100 text-green-800"
+                                  }`}>
+                                    {sum.due > 0 ? "Pending Payment" : "Paid"}
                                   </span>
-                                ))
-                              ) : (
-                                <span className="text-gray-500">None</span>
+                                  <button
+                                    onClick={() => navigate(`/visits/${v.id}`)}
+                                    className="px-3 py-1.5 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors duration-200 flex items-center"
+                                  >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                    </svg>
+                                    View Details
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Chief Complaint</p>
+                                  <p className="text-gray-900">{displayText(v.chief_complaint)}</p>
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium text-gray-500">Duration & Onset</p>
+                                  <p className="text-gray-900">{displayText(v.duration_onset)}</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                  <p className="text-sm font-medium text-gray-500 mb-1">Trigger Factors</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {Array.isArray(v.trigger_factors) && v.trigger_factors.length ? (
+                                      v.trigger_factors.map((t, i) => (
+                                        <span
+                                          key={i}
+                                          className="px-2.5 py-0.5 bg-green-100 text-green-800 text-xs rounded-full font-medium"
+                                        >
+                                          {t}
+                                        </span>
+                                      ))
+                                    ) : (
+                                      <span className="text-gray-500 text-sm">None reported</span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {procs.length > 0 && (
+                                <div className="border rounded-lg overflow-hidden">
+                                  <div className="bg-gray-100 px-4 py-2.5 border-b">
+                                    <h5 className="text-sm font-medium text-gray-700">Procedures</h5>
+                                  </div>
+                                  <div className="divide-y divide-gray-200">
+                                    {procs.map((r, i) => (
+                                      <div key={i} className="px-4 py-3 grid grid-cols-1 sm:grid-cols-12 gap-2">
+                                        <div className="sm:col-span-5">
+                                          <p className="font-medium text-gray-900 text-sm">{displayText(r.procedure)}</p>
+                                          <p className="text-xs text-gray-500">{formatDate(r.visitDate || r.visit_date)}</p>
+                                        </div>
+                                        <div className="sm:col-span-3">
+                                          <p className="text-xs text-gray-500">Next Appt</p>
+                                          <p className="text-sm text-gray-900">{formatDate(r.nextApptDate || r.next_appt_date)}</p>
+                                        </div>
+                                        <div className="sm:col-span-4 grid grid-cols-3 gap-2">
+                                          <div>
+                                            <p className="text-xs text-gray-500">Total</p>
+                                            <p className="text-sm font-medium">{inr(r.total)}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500">Paid</p>
+                                            <p className="text-sm font-medium text-green-600">{inr(r.paid)}</p>
+                                          </div>
+                                          <div>
+                                            <p className="text-xs text-gray-500">Due</p>
+                                            <p className={`text-sm font-medium ${Number(r.due || 0) > 0 ? "text-red-600" : "text-green-600"}`}>
+                                              {inr(r.due)}
+                                            </p>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <div className="bg-gray-50 px-4 py-3 border-t grid grid-cols-1 sm:grid-cols-12 gap-2">
+                                    <div className="sm:col-span-8 font-medium text-sm text-gray-700">Visit Totals</div>
+                                    <div className="sm:col-span-4 grid grid-cols-3 gap-2">
+                                      <div className="font-medium text-sm">{inr(sum.total)}</div>
+                                      <div className="font-medium text-sm text-green-600">{inr(sum.paid)}</div>
+                                      <div className={`font-medium text-sm ${sum.due > 0 ? "text-red-600" : "text-green-600"}`}>
+                                        {inr(sum.due)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
                               )}
                             </div>
-                          </div>
-                        </div>
-
-                        {procs.length > 0 && (
-                          <div className="mt-4 overflow-x-auto border rounded-lg">
-                            <table className="min-w-full divide-y divide-gray-200">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Procedure</th>
-                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Next Appt</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Total</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Paid</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Due</th>
-                                </tr>
-                              </thead>
-                              <tbody className="bg-white divide-y divide-gray-100">
-                                {procs.map((r, i) => (
-                                  <tr key={i}>
-                                    <td className="px-4 py-3 text-sm">
-                                      {formatDate(r.visitDate || r.visit_date)}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm">{displayText(r.procedure)}</td>
-                                    <td className="px-4 py-3 text-sm">
-                                      {formatDate(r.nextApptDate || r.next_appt_date)}
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-right">{inr(r.total)}</td>
-                                    <td className="px-4 py-3 text-sm text-right text-green-700">{inr(r.paid)}</td>
-                                    <td className="px-4 py-3 text-sm text-right">
-                                      <span className={`${Number(r.due || 0) > 0 ? "text-red-600" : "text-green-600"}`}>
-                                        {inr(r.due)}
-                                      </span>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                              <tfoot className="bg-gray-50">
-                                <tr>
-                                  <th colSpan={3} className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Totals</th>
-                                  <th className="px-4 py-3 text-right text-sm font-semibold">{inr(sum.total)}</th>
-                                  <th className="px-4 py-3 text-right text-sm font-semibold text-green-700">{inr(sum.paid)}</th>
-                                  <th className="px-4 py-3 text-right text-sm font-semibold">
-                                    <span className={`${sum.due > 0 ? "text-red-700" : "text-green-700"}`}>
-                                      {inr(sum.due)}
-                                    </span>
-                                  </th>
-                                </tr>
-                              </tfoot>
-                            </table>
-                          </div>
-                        )}
+                          );
+                        })}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
       </div>
