@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// src/components/PatientProfileForm.jsx
+import React, { useEffect, useMemo, useState } from "react";
 import Select from "react-select";
 import {
   FaUser,
@@ -13,18 +14,15 @@ import {
   FaTrash,
 } from "react-icons/fa";
 import { MdOutlineHome, MdOutlineLocationCity } from "react-icons/md";
+import { IKUpload, IKImage } from "imagekitio-react";
 
-// NOTE: No backend writes here. We only pass data upward to the parent.
-// import { createPatient, updatePatient } from "../../utils/api";
-// import { supabase } from "../../CreateClient";
-
+// ---------- Constants ----------
 const EMAIL_RE = /^\S+@\S+\.\S+$/;
-// India-style 10-digit mobiles starting with 6-9
 const MOBILE_RE = /^[6-9][0-9]{9}$/;
 const PIN_RE = /^[0-9]{6}$/;
 
 const MAX_PHOTO_MB = 5;
-const PHOTO_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp"];
 
 const GENDER_OPTS = [
   { value: "Male", label: "Male" },
@@ -81,11 +79,9 @@ const selectStyles = {
   }),
 };
 
+// ---------- Helpers ----------
 const Label = ({ htmlFor, children, required }) => (
-  <label
-    htmlFor={htmlFor}
-    className="block text-sm font-medium text-gray-700 mb-1"
-  >
+  <label htmlFor={htmlFor} className="block text-sm font-medium text-gray-700 mb-1">
     {children} {required && <span className="text-red-500">*</span>}
   </label>
 );
@@ -107,9 +103,9 @@ const InputIconWrap = ({ icon: Icon, children }) => (
 );
 
 const DRAFT_KEY = "dental:patientProfile:draft";
+const IK_DELETE_ENDPOINT = "/api/imagekit/delete"; // <-- implement on your server
 
 const fmtDate = (d) => {
-  // yyyy-mm-dd for <input type="date">
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -118,10 +114,20 @@ const fmtDate = (d) => {
 
 const today = new Date();
 const MAX_DOB = fmtDate(today);
-const MIN_DOB = fmtDate(
-  new Date(today.getFullYear() - 120, today.getMonth(), today.getDate())
-);
+const MIN_DOB = fmtDate(new Date(today.getFullYear() - 120, today.getMonth(), today.getDate()));
 
+const safeName = (first, last) => {
+  const core = [first, last].filter(Boolean).join("-") || "patient";
+  return core
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+};
+
+const randomSuffix = () => Math.random().toString(36).slice(2);
+
+// ---------- Component ----------
 const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
   // --- Base state from props (overridden by saved draft after mount) ---
   const [firstName, setFirstName] = useState(initial.firstName || "");
@@ -147,15 +153,17 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
   );
   const [emgPhone, setEmgPhone] = useState(initial.emgPhone || "");
 
-  const [photoFile, setPhotoFile] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(initial.photoPreview || "");
+  // Photo states (ImageKit-driven)
+  const [photoIK, setPhotoIK] = useState(initial.photoIK || null); // { fileId, filePath, url, ... }
+  const [photoPreview, setPhotoPreview] = useState(initial.photoPreview || ""); // keep for payload/UI
+  const [photoError, setPhotoError] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
+  const [folderLocked, setFolderLocked] = useState(null); // lock after first upload
 
   const [errors, setErrors] = useState({});
   const [touched, setTouched] = useState({});
-  const [photoError, setPhotoError] = useState("");
-  const fileInputRef = useRef();
-
-  // Local submit state (no network here)
   const [saving, setSaving] = useState(false);
   const [submitError, setSubmitError] = useState("");
 
@@ -171,34 +179,13 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
     return a >= 0 && a <= 150 ? String(a) : "";
   }, [dob]);
 
-  // --- Photo preview (persistable): convert selected file to Data URL ---
-  useEffect(() => {
-    if (!photoFile) return;
-    setPhotoError("");
-    if (!PHOTO_TYPES.includes(photoFile.type)) {
-      setPhotoError("Please choose a JPG, PNG, or WEBP image.");
-      setPhotoFile(null);
-      return;
-    }
-    if (photoFile.size > MAX_PHOTO_MB * 1024 * 1024) {
-      setPhotoError(`Image must be ≤ ${MAX_PHOTO_MB} MB.`);
-      setPhotoFile(null);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setPhotoPreview(typeof reader.result === "string" ? reader.result : "");
-    };
-    reader.readAsDataURL(photoFile);
-  }, [photoFile]);
-
-  // --- Build payload (what we pass upward) ---
+  // --- Build payload ---
   const payload = useMemo(
     () => ({
       firstName: firstName.trim(),
       lastName: lastName.trim(),
       dob,
-      age, // UI info; parent can ignore if not needed
+      age,
       gender: gender?.value || "",
       phone,
       email: email.trim(),
@@ -213,27 +200,14 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
         relation: emgRelation?.value || "",
         phone: emgPhone,
       },
-      photoPreview, // UI-only preview for this step
-      // NOTE: we will pass the raw file alongside this payload on Next
+      photoPreview,             // for UI
+      photoUrl: photoIK?.url || "", // prefer CDN URL
+      photoIK: photoIK || null,     // keep lightweight IK object
     }),
     [
-      firstName,
-      lastName,
-      dob,
-      age,
-      gender,
-      phone,
-      email,
-      addressLine1,
-      addressLine2,
-      city,
-      state,
-      pincode,
-      occupation,
-      emgName,
-      emgRelation,
-      emgPhone,
-      photoPreview,
+      firstName, lastName, dob, age, gender, phone, email,
+      addressLine1, addressLine2, city, state, pincode, occupation,
+      emgName, emgRelation, emgPhone, photoPreview, photoIK,
     ]
   );
 
@@ -244,14 +218,12 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
         if (typeof window !== "undefined") {
           localStorage.setItem(DRAFT_KEY, JSON.stringify(payload));
         }
-      } catch {
-        // ignore quota or JSON errors
-      }
+      } catch {}
     }, 2000);
     return () => clearTimeout(id);
   }, [payload]);
 
-  // --- Restore from localStorage on mount; map payload -> state fields ---
+  // --- Restore from localStorage on mount ---
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -264,8 +236,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
       setDob(draft.dob ?? initial.dob ?? "");
       setGender(
         (draft.gender && GENDER_OPTS.find((g) => g.value === draft.gender)) ||
-          (initial.gender &&
-            GENDER_OPTS.find((g) => g.value === initial.gender)) ||
+          (initial.gender && GENDER_OPTS.find((g) => g.value === initial.gender)) ||
           null
       );
       setPhone(draft.phone ?? initial.phone ?? "");
@@ -280,18 +251,15 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
       const emg = draft.emergencyContact || {};
       setEmgName(emg.name ?? initial.emgName ?? "");
       setEmgRelation(
-        (emg.relation &&
-          RELATION_OPTS.find((r) => r.value === emg.relation)) ||
-          (initial.emgRelation &&
-            RELATION_OPTS.find((r) => r.value === initial.emgRelation)) ||
+        (emg.relation && RELATION_OPTS.find((r) => r.value === emg.relation)) ||
+          (initial.emgRelation && RELATION_OPTS.find((r) => r.value === initial.emgRelation)) ||
           null
       );
       setEmgPhone(emg.phone ?? initial.emgPhone ?? "");
 
       setPhotoPreview(draft.photoPreview ?? initial.photoPreview ?? "");
-    } catch {
-      // ignore parse errors
-    }
+      setPhotoIK(draft.photoIK ?? initial.photoIK ?? null);
+    } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -307,19 +275,16 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
       const now = new Date();
       if (Number.isNaN(d.getTime())) e.dob = "Enter a valid date";
       else if (d > now) e.dob = "DOB cannot be in the future";
-      else if (now.getFullYear() - d.getFullYear() > 120)
-        e.dob = "DOB seems implausible";
+      else if (now.getFullYear() - d.getFullYear() > 120) e.dob = "DOB seems implausible";
     }
     if (!data.gender) e.gender = "Please select gender";
     if (!MOBILE_RE.test(String(data.phone || "")))
       e.phone = "Enter a valid 10-digit mobile (starts 6–9)";
-    if (data.email && !EMAIL_RE.test(data.email)) e.email = "Enter a valid email";
+    if (data.email && !EMAIL_RE.test(data.email))
+      e.email = "Enter a valid email";
     if (data.pincode && !PIN_RE.test(String(data.pincode)))
       e.pincode = "Pincode must be 6 digits";
-    if (
-      data.emergencyContact?.phone &&
-      !MOBILE_RE.test(String(data.emergencyContact.phone))
-    )
+    if (data.emergencyContact?.phone && !MOBILE_RE.test(String(data.emergencyContact.phone)))
       e.emgPhone = "Emergency phone must be 10 digits (starts 6–9)";
     if (photoError) e.photo = photoError;
     return e;
@@ -330,12 +295,43 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload, photoError]);
 
-  const setFieldTouched = (name) =>
-    setTouched((t) => ({ ...t, [name]: true }));
-
+  const setFieldTouched = (name) => setTouched((t) => ({ ...t, [name]: true }));
   const isFormValid = Object.keys(validate()).length === 0;
 
-  // --- Submit: validate and PASS DATA UP ONLY (no server calls) ---
+  // ---------- ImageKit methods (client -> server) ----------
+  const apiDeleteImageKitFile = async (fileId) => {
+    try {
+      if (!fileId) return false;
+      const res = await fetch(IK_DELETE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileId }),
+      });
+      if (!res.ok) throw new Error("Delete failed");
+      const json = await res.json().catch(() => ({}));
+      return json?.success !== false;
+    } catch (err) {
+      console.error("[ImageKit Delete Error]", err);
+      return false;
+    }
+  };
+
+  const removePhoto = async () => {
+    // optimistic UI: clear immediately, try to delete in background
+    const old = photoIK;
+    setDeleting(true);
+    setPhotoIK(null);
+    setPhotoPreview("");
+    setPhotoError("");
+
+    try {
+      if (old?.fileId) await apiDeleteImageKitFile(old.fileId);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  // --- Submit: pass data up ---
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitError("");
@@ -357,18 +353,69 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
 
     setSaving(true);
     try {
-      // Tell parent we “saved” this step locally (for draft UI/timestamp, optional)
       onSave?.(payload);
-
-      // Move to next step and give parent the full payload + raw file
-      // Parent will persist everything later on Review.
-      onNext?.(payload, { ...payload, _photoFile: photoFile || null });
+      // No raw file anymore (ImageKit handles storage). Keep API backward-compat.
+      onNext?.(payload, { ...payload, _photoFile: null });
     } catch (err) {
       setSubmitError(err?.message || "Failed to continue");
     } finally {
       setSaving(false);
     }
   };
+
+  // ---- ImageKit upload handlers ----
+  const uploadFolder = useMemo(() => {
+    // Avoid leading slash for ImageKit folders; lock folder after first upload
+    if (folderLocked) return folderLocked;
+    const base = safeName(firstName, lastName) || "patient";
+    return `patients/${base}`;
+  }, [firstName, lastName, folderLocked]);
+
+  const validateFile = (file) => {
+    if (!ALLOWED_MIME.includes(file.type)) {
+      throw new Error("Only JPG/PNG/WEBP allowed");
+    }
+    if (file.size > MAX_PHOTO_MB * 1024 * 1024) {
+      throw new Error(`Max file size ${MAX_PHOTO_MB}MB`);
+    }
+  };
+
+  const onUploadStart = () => {
+    setUploading(true);
+    setPhotoError("");
+    setFieldTouched("photo");
+    if (!folderLocked) {
+      const base = safeName(firstName, lastName) || "patient";
+      setFolderLocked(`patients/${base}`);
+    }
+    // If replacing, remember the old file to delete AFTER success
+    if (photoIK?.fileId) setPendingDeleteId(photoIK.fileId);
+  };
+
+  const onUploadError = (err) => {
+    console.error("[ImageKit Upload Error]", err);
+    setUploading(false);
+    setPhotoError(err?.message || "Image upload failed");
+    setPendingDeleteId(null); // keep old image
+  };
+
+  const onUploadSuccess = async (res) => {
+    setUploading(false);
+    setPhotoError("");
+    const { fileId, filePath, url, thumbnailUrl, name, size, width, height } = res || {};
+    setPhotoIK({ fileId, filePath, url, thumbnailUrl, name, size, width, height });
+    setPhotoPreview(url || "");
+    // delete the old one (if any) in background
+    const oldId = pendingDeleteId;
+    setPendingDeleteId(null);
+    if (oldId && oldId !== fileId) {
+      // Best-effort cleanup; UI already updated to the new image
+      await apiDeleteImageKitFile(oldId);
+    }
+  };
+
+  // --- UI ---
+  const uploadDisabled = uploading || deleting;
 
   return (
     <form
@@ -384,7 +431,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
         </p>
       </div>
 
-      {/* Submit error (if any) */}
+      {/* Submit error */}
       {submitError && (
         <div className="px-6 pt-4">
           <p className="text-sm text-red-600">{submitError}</p>
@@ -392,78 +439,92 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
       )}
 
       <div className="px-6 py-6 space-y-6">
-        {/* Photo */}
+        {/* Photo (ImageKit-backed) */}
         <section className="space-y-2">
           <Label htmlFor="photo">Patient Photo</Label>
+
           <div className="mt-2 flex flex-col sm:flex-row items-start sm:items-center gap-6">
-            {/* Photo Preview Container */}
+            {/* Preview */}
             <div className="flex h-32 w-32 shrink-0 items-center justify-center overflow-hidden rounded-lg border-2 border-dashed border-gray-300 bg-gray-50 relative">
-              {photoPreview ? (
-                <img
-                  src={photoPreview}
+              {photoIK?.filePath ? (
+                <IKImage
+                  path={photoIK.filePath}
+                  transformation={[
+                    { width: 320, height: 320, crop: "fo-auto", quality: 80, format: "auto" },
+                  ]}
+                  lqip={{ active: true, quality: 15 }}
+                  loading="lazy"
                   alt="Selected patient"
                   className="h-full w-full object-cover"
                 />
               ) : (
                 <div className="text-center p-4">
                   <FaCamera className="mx-auto text-gray-400 text-3xl mb-2" />
-                  <span className="text-xs text-gray-500">No photo selected</span>
+                  <span className="text-xs text-gray-500">
+                    {uploading ? "Uploading…" : "No photo selected"}
+                  </span>
                 </div>
               )}
             </div>
 
-            {/* Buttons Container */}
+            {/* Buttons + hidden IKUpload input */}
             <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-              <input
-                ref={fileInputRef}
-                id="photo"
-                name="photo"
-                type="file"
-                accept={PHOTO_TYPES.join(",")}
-                onChange={(e) => {
-                  setFieldTouched("photo");
-                  setPhotoFile(e.target.files?.[0] || null);
-                }}
+              {/* Hidden IKUpload file input triggered by label/button */}
+              <IKUpload
+                id="ik-upload-photo"
                 className="hidden"
+                folder={uploadFolder} // no leading slash
+                fileName={`patient_${Date.now()}_${randomSuffix()}.jpg`}
+                useUniqueFileName={true}
+                accept="image/jpeg,image/png,image/webp"
+                validateFile={validateFile}
+                onUploadStart={onUploadStart}
+                onError={onUploadError}
+                onSuccess={onUploadSuccess}
+                disabled={uploadDisabled}
               />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
-              >
-                <FaUpload className="mr-2 text-gray-500" />
-                Upload Photo
-              </button>
 
-              {photoPreview && (
+              <label
+                htmlFor="ik-upload-photo"
+                aria-disabled={uploadDisabled}
+                className={`inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium shadow-sm transition-colors cursor-pointer
+                  ${
+                    uploadDisabled
+                      ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                      : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                  }`}
+              >
+                <FaUpload className="mr-2" />
+                {uploading ? "Uploading…" : "Upload Photo"}
+              </label>
+
+              {photoIK?.filePath && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setPhotoFile(null);
-                    setPhotoPreview("");
-                    if (fileInputRef.current) fileInputRef.current.value = "";
-                    setPhotoError("");
-                  }}
-                  className="inline-flex items-center justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+                  onClick={removePhoto}
+                  disabled={uploadDisabled}
+                  className={`inline-flex items-center justify-center rounded-md border px-4 py-2 text-sm font-medium shadow-sm transition-colors
+                    ${
+                      uploadDisabled
+                        ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                    }`}
                 >
-                  <FaTrash className="mr-2 text-gray-500" />
-                  Remove
+                  <FaTrash className="mr-2" />
+                  {deleting ? "Removing…" : "Remove"}
                 </button>
               )}
             </div>
           </div>
-          <FieldError id="photo-error" msg={touched.photo ? errors.photo : ""} />
-          <p className="text-xs text-gray-500">
-            JPG/PNG/WEBP, up to {MAX_PHOTO_MB} MB.
-          </p>
+
+          <FieldError id="photo-error" msg={touched.photo ? (errors.photo || "") : ""} />
+          <p className="text-xs text-gray-500">JPG/PNG/WEBP, up to {MAX_PHOTO_MB} MB.</p>
         </section>
 
         {/* Name */}
         <section className="grid gap-6 md:grid-cols-2">
           <div>
-            <Label htmlFor="firstName" required>
-              First Name
-            </Label>
+            <Label htmlFor="firstName" required>First Name</Label>
             <InputIconWrap icon={FaUser}>
               <input
                 id="firstName"
@@ -473,25 +534,19 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                 onChange={(e) => setFirstName(e.target.value)}
                 onBlur={() => setFieldTouched("firstName")}
                 aria-invalid={!!(touched.firstName && errors.firstName)}
-                aria-describedby="firstName-error"
+                aria-describedby={touched.firstName && errors.firstName ? "firstName-error" : undefined}
                 className={`mt-1 w-full rounded-lg border pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  touched.firstName && errors.firstName
-                    ? "border-red-500"
-                    : "border-gray-300"
+                  touched.firstName && errors.firstName ? "border-red-500" : "border-gray-300"
                 }`}
                 placeholder="e.g., Priya"
                 autoComplete="given-name"
               />
             </InputIconWrap>
-            <FieldError
-              id="firstName-error"
-              msg={touched.firstName ? errors.firstName : ""}
-            />
+            <FieldError id="firstName-error" msg={touched.firstName ? errors.firstName : ""} />
           </div>
+
           <div>
-            <Label htmlFor="lastName" required>
-              Last Name
-            </Label>
+            <Label htmlFor="lastName" required>Last Name</Label>
             <InputIconWrap icon={FaUser}>
               <input
                 id="lastName"
@@ -501,29 +556,22 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                 onChange={(e) => setLastName(e.target.value)}
                 onBlur={() => setFieldTouched("lastName")}
                 aria-invalid={!!(touched.lastName && errors.lastName)}
-                aria-describedby="lastName-error"
+                aria-describedby={touched.lastName && errors.lastName ? "lastName-error" : undefined}
                 className={`mt-1 w-full rounded-lg border pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  touched.lastName && errors.lastName
-                    ? "border-red-500"
-                    : "border-gray-300"
+                  touched.lastName && errors.lastName ? "border-red-500" : "border-gray-300"
                 }`}
                 placeholder="e.g., Kumar"
                 autoComplete="family-name"
               />
             </InputIconWrap>
-            <FieldError
-              id="lastName-error"
-              msg={touched.lastName ? errors.lastName : ""}
-            />
+            <FieldError id="lastName-error" msg={touched.lastName ? errors.lastName : ""} />
           </div>
         </section>
 
-        {/* DOB + Age display + Gender */}
+        {/* DOB + Age + Gender */}
         <section className="grid gap-6 md:grid-cols-3">
           <div>
-            <Label htmlFor="dob" required>
-              Date of Birth
-            </Label>
+            <Label htmlFor="dob" required>Date of Birth</Label>
             <InputIconWrap icon={FaBirthdayCake}>
               <input
                 id="dob"
@@ -536,7 +584,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                 onChange={(e) => setDob(e.target.value)}
                 onBlur={() => setFieldTouched("dob")}
                 aria-invalid={!!(touched.dob && errors.dob)}
-                aria-describedby="dob-error"
+                aria-describedby={touched.dob && errors.dob ? "dob-error" : undefined}
                 className={`mt-1 w-full rounded-lg border pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
                   touched.dob && errors.dob ? "border-red-500" : "border-gray-300"
                 }`}
@@ -556,9 +604,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
           </div>
 
           <div className="md:col-span-2">
-            <Label htmlFor="gender" required>
-              Gender
-            </Label>
+            <Label htmlFor="gender" required>Gender</Label>
             <div className="mt-1">
               <Select
                 inputId="gender"
@@ -571,38 +617,29 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                 onBlur={() => setFieldTouched("gender")}
                 classNamePrefix="react-select"
                 aria-invalid={!!(touched.gender && errors.gender)}
-                aria-describedby="gender-error"
+                aria-describedby={touched.gender && errors.gender ? "gender-error" : undefined}
               />
             </div>
-            <FieldError
-              id="gender-error"
-              msg={touched.gender ? errors.gender : ""}
-            />
+            <FieldError id="gender-error" msg={touched.gender ? errors.gender : ""} />
           </div>
         </section>
 
         {/* Contact */}
         <section className="grid gap-6 md:grid-cols-2">
           <div>
-            <Label htmlFor="phone" required>
-              Mobile (10-digit)
-            </Label>
+            <Label htmlFor="phone" required>Mobile (10-digit)</Label>
             <InputIconWrap icon={FaPhoneAlt}>
               <input
                 id="phone"
                 name="phone"
                 required
                 value={phone}
-                onChange={(e) =>
-                  setPhone(e.target.value.replace(/\D+/g, "").slice(0, 10))
-                }
+                onChange={(e) => setPhone(e.target.value.replace(/\D+/g, "").slice(0, 10))}
                 onBlur={() => setFieldTouched("phone")}
                 aria-invalid={!!(touched.phone && errors.phone)}
-                aria-describedby="phone-error"
+                aria-describedby={touched.phone && errors.phone ? "phone-error" : undefined}
                 className={`mt-1 w-full rounded-lg border pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  touched.phone && errors.phone
-                    ? "border-red-500"
-                    : "border-gray-300"
+                  touched.phone && errors.phone ? "border-red-500" : "border-gray-300"
                 }`}
                 inputMode="numeric"
                 pattern="[6-9][0-9]{9}"
@@ -612,6 +649,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
             </InputIconWrap>
             <FieldError id="phone-error" msg={touched.phone ? errors.phone : ""} />
           </div>
+
           <div>
             <Label htmlFor="email">Email</Label>
             <InputIconWrap icon={FaEnvelope}>
@@ -623,11 +661,9 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                 onChange={(e) => setEmail(e.target.value)}
                 onBlur={() => setFieldTouched("email")}
                 aria-invalid={!!(touched.email && errors.email)}
-                aria-describedby="email-error"
+                aria-describedby={touched.email && errors.email ? "email-error" : undefined}
                 className={`mt-1 w-full rounded-lg border pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  touched.email && errors.email
-                    ? "border-red-500"
-                    : "border-gray-300"
+                  touched.email && errors.email ? "border-red-500" : "border-gray-300"
                 }`}
                 inputMode="email"
                 autoComplete="email"
@@ -654,6 +690,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
               />
             </InputIconWrap>
           </div>
+
           <div>
             <Label htmlFor="addr2">Address Line 2</Label>
             <InputIconWrap icon={MdOutlineHome}>
@@ -684,6 +721,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
               />
             </InputIconWrap>
           </div>
+
           <div>
             <Label htmlFor="state">State</Label>
             <InputIconWrap icon={FaMapMarkerAlt}>
@@ -697,6 +735,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
               />
             </InputIconWrap>
           </div>
+
           <div>
             <Label htmlFor="pincode">Pincode</Label>
             <InputIconWrap icon={FaMapMarkerAlt}>
@@ -704,16 +743,12 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                 id="pincode"
                 name="pincode"
                 value={pincode}
-                onChange={(e) =>
-                  setPincode(e.target.value.replace(/\D+/g, "").slice(0, 6))
-                }
+                onChange={(e) => setPincode(e.target.value.replace(/\D+/g, "").slice(0, 6))}
                 onBlur={() => setFieldTouched("pincode")}
                 aria-invalid={!!(touched.pincode && errors.pincode)}
-                aria-describedby="pincode-error"
+                aria-describedby={touched.pincode && errors.pincode ? "pincode-error" : undefined}
                 className={`mt-1 w-full rounded-lg border pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  touched.pincode && errors.pincode
-                    ? "border-red-500"
-                    : "border-gray-300"
+                  touched.pincode && errors.pincode ? "border-red-500" : "border-gray-300"
                 }`}
                 inputMode="numeric"
                 pattern="[0-9]{6}"
@@ -721,10 +756,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                 placeholder="6-digit"
               />
             </InputIconWrap>
-            <FieldError
-              id="pincode-error"
-              msg={touched.pincode ? errors.pincode : ""}
-            />
+            <FieldError id="pincode-error" msg={touched.pincode ? errors.pincode : ""} />
           </div>
         </section>
 
@@ -746,9 +778,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
 
         {/* Emergency Contact */}
         <section className="pt-2">
-          <h3 className="text-lg font-medium text-gray-800 mb-4">
-            Emergency Contact
-          </h3>
+          <h3 className="text-lg font-medium text-gray-800 mb-4">Emergency Contact</h3>
           <div className="grid gap-6 md:grid-cols-3">
             <div>
               <Label htmlFor="emgName">Name</Label>
@@ -777,15 +807,9 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                   styles={{
                     ...selectStyles,
                     menuPortal: (base) => ({ ...base, zIndex: 9999 }),
-                    menu: (provided) => ({
-                      ...provided,
-                      zIndex: 9999,
-                      position: "absolute",
-                    }),
+                    menu: (provided) => ({ ...provided, zIndex: 9999, position: "absolute" }),
                   }}
-                  menuPortalTarget={
-                    typeof document !== "undefined" ? document.body : null
-                  }
+                  menuPortalTarget={typeof document !== "undefined" ? document.body : null}
                   menuPosition="fixed"
                   onBlur={() => setFieldTouched("emgRelation")}
                   classNamePrefix="react-select"
@@ -800,16 +824,12 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                   id="emgPhone"
                   name="emgPhone"
                   value={emgPhone}
-                  onChange={(e) =>
-                    setEmgPhone(e.target.value.replace(/\D+/g, "").slice(0, 10))
-                  }
+                  onChange={(e) => setEmgPhone(e.target.value.replace(/\D+/g, "").slice(0, 10))}
                   onBlur={() => setFieldTouched("emgPhone")}
                   aria-invalid={!!(touched.emgPhone && errors.emgPhone)}
-                  aria-describedby="emgPhone-error"
+                  aria-describedby={touched.emgPhone && errors.emgPhone ? "emgPhone-error" : undefined}
                   className={`mt-1 w-full rounded-lg border pl-10 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                    touched.emgPhone && errors.emgPhone
-                      ? "border-red-500"
-                      : "border-gray-300"
+                    touched.emgPhone && errors.emgPhone ? "border-red-500" : "border-gray-300"
                   }`}
                   inputMode="numeric"
                   pattern="[6-9][0-9]{9}"
@@ -817,10 +837,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
                   autoComplete="tel"
                 />
               </InputIconWrap>
-              <FieldError
-                id="emgPhone-error"
-                msg={touched.emgPhone ? errors.emgPhone : ""}
-              />
+              <FieldError id="emgPhone-error" msg={touched.emgPhone ? errors.emgPhone : ""} />
             </div>
           </div>
         </section>
@@ -832,7 +849,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
           <button
             type="button"
             onClick={() => {
-              // quick clear (keeps any server state outside)
+              // quick clear (local only)
               setFirstName("");
               setLastName("");
               setDob("");
@@ -848,10 +865,13 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
               setEmgName("");
               setEmgRelation(null);
               setEmgPhone("");
-              setPhotoFile(null);
+              setPhotoIK(null);
               setPhotoPreview("");
               setPhotoError("");
               setTouched({});
+              setErrors({});
+              setFolderLocked(null);
+              setPendingDeleteId(null);
               try {
                 localStorage.removeItem(DRAFT_KEY);
               } catch {}
@@ -864,9 +884,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
           <button
             type="submit"
             className={`rounded-lg px-5 py-2.5 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors ${
-              isFormValid && !saving
-                ? "bg-indigo-600 hover:bg-indigo-700"
-                : "bg-indigo-400 cursor-not-allowed"
+              isFormValid && !saving ? "bg-indigo-600 hover:bg-indigo-700" : "bg-indigo-400 cursor-not-allowed"
             }`}
             disabled={!isFormValid || saving}
           >

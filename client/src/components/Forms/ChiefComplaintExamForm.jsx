@@ -1,9 +1,11 @@
+// src/components/ChiefComplaintExamForm.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /* ========================
    Config & helpers
    ======================== */
-const teethNumbers = [8,7,6,5,4,3,2,1, 1,2,3,4,5,6,7,8];
+const adultTeethNumbers = [8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8];
+const childTeethLetters = ["E", "D", "C", "B", "A", "A", "B", "C", "D", "E"];
 const gradeOptions = ["A", "B", "C", "D", "E"];
 const statusOptions = [
   "Intact",
@@ -17,17 +19,26 @@ const statusOptions = [
 
 const getColorClass = (grade) => {
   switch (grade) {
-    case "A": return "bg-green-100 border-green-300 text-green-800";
-    case "B": return "bg-yellow-100 border-yellow-300 text-yellow-800";
-    case "C": return "bg-orange-100 border-orange-300 text-orange-800";
-    case "D": return "bg-red-100 border-red-300 text-red-800";
-    case "E": return "bg-red-200 border-red-400 text-red-900";
-    default:  return "bg-white border-gray-200 text-gray-500 hover:bg-gray-50";
+    case "A":
+      return "bg-green-100 border-green-300 text-green-800";
+    case "B":
+      return "bg-yellow-100 border-yellow-300 text-yellow-800";
+    case "C":
+      return "bg-orange-100 border-orange-300 text-orange-800";
+    case "D":
+      return "bg-red-100 border-red-300 text-red-800";
+    case "E":
+      return "bg-red-200 border-red-400 text-red-900";
+    default:
+      return "bg-white border-gray-200 text-gray-500 hover:bg-gray-50";
   }
 };
 
-const Grid16 = ({ children, className = "" }) => (
-  <div className={`grid [grid-template-columns:repeat(16,minmax(0,1fr))] gap-1.5 ${className}`}>
+const GridN = ({ n, children, className = "" }) => (
+  <div
+    className={`grid gap-1.5 ${className}`}
+    style={{ gridTemplateColumns: `repeat(${n}, minmax(0, 1fr))` }}
+  >
     {children}
   </div>
 );
@@ -35,8 +46,15 @@ const Grid16 = ({ children, className = "" }) => (
 const Modal = ({ open, title, onClose, children }) => {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div className="relative w-full max-w-md bg-white rounded-xl shadow-xl overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
@@ -45,8 +63,19 @@ const Modal = ({ open, title, onClose, children }) => {
             className="text-gray-400 hover:text-gray-500 rounded-full p-1 hover:bg-gray-100 transition-colors"
             aria-label="Close"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className="w-5 h-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              aria-hidden="true"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </button>
         </div>
@@ -62,8 +91,8 @@ const MAX_NOTES = 600;
    Main Form (no backend writes here)
    ======================== */
 const ChiefComplaintExamForm = ({
-  patientId,          // only used to scope local draft key
-  visitId,            // ignored for writes here; real save happens in Review
+  patientId, // used to scope local draft key (pass from parent!)
+  visitId: _visitId, // unused locally
   initial = {},
   onBack,
   onNext,
@@ -76,27 +105,49 @@ const ChiefComplaintExamForm = ({
   );
 
   // Chief Complaint
-  const [chiefComplaint, setChiefComplaint] = useState(initial.chiefComplaint || "");
-  const [durationOnset, setDurationOnset] = useState(initial.durationOnset || "");
-  const [triggerFactors, setTriggerFactors] = useState(initial.triggerFactors || []);
+  const [chiefComplaint, setChiefComplaint] = useState(
+    initial.chiefComplaint || ""
+  );
+  const [durationOnset, setDurationOnset] = useState(
+    initial.durationOnset || ""
+  );
+  const [triggerFactors, setTriggerFactors] = useState(
+    initial.triggerFactors || []
+  );
   const [otherTrigger, setOtherTrigger] = useState(initial.otherTrigger || "");
 
   // diagnosis & plan
-  const [diagnosisNotes, setDiagnosisNotes] = useState(initial.diagnosisNotes || "");
-  const [treatmentPlanNotes, setTreatmentPlanNotes] = useState(initial.treatmentPlanNotes || "");
+  const [diagnosisNotes, setDiagnosisNotes] = useState(
+    initial.diagnosisNotes || ""
+  );
+  const [treatmentPlanNotes, setTreatmentPlanNotes] = useState(
+    initial.treatmentPlanNotes || ""
+  );
+
+  // Child/Adult mode
+  const [isChildMode, setIsChildMode] = useState(initial.isChildMode || false);
 
   // Grid state (grade + status per tooth)
+  const size = isChildMode ? 10 : 16;
   const [upperGrades, setUpperGrades] = useState(
-    initial.upperGrades?.length === 16 ? initial.upperGrades : Array(16).fill("")
+    initial.upperGrades?.length === size
+      ? initial.upperGrades
+      : Array(size).fill("")
   );
   const [lowerGrades, setLowerGrades] = useState(
-    initial.lowerGrades?.length === 16 ? initial.lowerGrades : Array(16).fill("")
+    initial.lowerGrades?.length === size
+      ? initial.lowerGrades
+      : Array(size).fill("")
   );
   const [upperStatus, setUpperStatus] = useState(
-    initial.upperStatus?.length === 16 ? initial.upperStatus : Array(16).fill("")
+    initial.upperStatus?.length === size
+      ? initial.upperStatus
+      : Array(size).fill("")
   );
   const [lowerStatus, setLowerStatus] = useState(
-    initial.lowerStatus?.length === 16 ? initial.lowerStatus : Array(16).fill("")
+    initial.lowerStatus?.length === size
+      ? initial.lowerStatus
+      : Array(size).fill("")
   );
 
   // Selection modal
@@ -112,8 +163,24 @@ const ChiefComplaintExamForm = ({
   const [submitError, setSubmitError] = useState("");
 
   // Keyboard nav
-  const gridRefsUpper = useRef(Array.from({ length: 16 }, () => React.createRef()));
-  const gridRefsLower = useRef(Array.from({ length: 16 }, () => React.createRef()));
+  const gridRefsUpper = useRef([]);
+  const gridRefsLower = useRef([]);
+  useEffect(() => {
+    gridRefsUpper.current = Array(size).fill(null);
+    gridRefsLower.current = Array(size).fill(null);
+  }, [size]);
+
+  // Toggle child/adult mode
+  const toggleChildMode = () => {
+    const newMode = !isChildMode;
+    setIsChildMode(newMode);
+    const newSize = newMode ? 10 : 16;
+    setUpperGrades(Array(newSize).fill(""));
+    setLowerGrades(Array(newSize).fill(""));
+    setUpperStatus(Array(newSize).fill(""));
+    setLowerStatus(Array(newSize).fill(""));
+    setSelected(null);
+  };
 
   const openPicker = (jaw, index) => {
     setSelected({ jaw, index });
@@ -124,36 +191,55 @@ const ChiefComplaintExamForm = ({
     if (!selected) return;
     const { jaw, index } = selected;
     if (jaw === "upper") {
-      const g = [...upperGrades]; g[index] = grade; setUpperGrades(g);
-      const s = [...upperStatus]; s[index] = status; setUpperStatus(s);
+      const g = [...upperGrades];
+      g[index] = grade;
+      setUpperGrades(g);
+      const s = [...upperStatus];
+      s[index] = status;
+      setUpperStatus(s);
     } else {
-      const g = [...lowerGrades]; g[index] = grade; setLowerGrades(g);
-      const s = [...lowerStatus]; s[index] = status; setLowerStatus(s);
+      const g = [...lowerGrades];
+      g[index] = grade;
+      setLowerGrades(g);
+      const s = [...lowerStatus];
+      s[index] = status;
+      setLowerStatus(s);
     }
     setPickerOpen(false);
   };
 
   const toggleTrigger = (factor) => {
-    setTriggerFactors((prev) =>
-      prev.includes(factor) ? prev.filter((f) => f !== factor) : [...prev, factor]
-    );
+    setTriggerFactors((prev) => {
+      const next = prev.includes(factor)
+        ? prev.filter((f) => f !== factor)
+        : [...prev, factor];
+      // if "Other" turned off, clear the free text so it doesn't linger
+      if (!next.includes("Other")) setOtherTrigger("");
+      return next;
+    });
   };
 
   // Build payload (UI state)
   const payload = useMemo(() => {
-    const upper = teethNumbers.map((num, idx) => ({
-      tooth: num,
+    const teethLabels = isChildMode ? childTeethLetters : adultTeethNumbers;
+
+    const upper = teethLabels.map((label, idx) => ({
+      tooth: label,
       grade: upperGrades[idx],
       status: upperStatus[idx],
     }));
-    const lower = teethNumbers.map((num, idx) => ({
-      tooth: num,
+    const lower = teethLabels.map((label, idx) => ({
+      tooth: label,
       grade: lowerGrades[idx],
       status: lowerStatus[idx],
     }));
+
     const triggers =
       otherTrigger && triggerFactors.includes("Other")
-        ? [...triggerFactors.filter((t) => t !== "Other"), `Other: ${otherTrigger}`]
+        ? [
+            ...triggerFactors.filter((t) => t !== "Other"),
+            `Other: ${otherTrigger}`,
+          ]
         : triggerFactors;
 
     return {
@@ -169,7 +255,7 @@ const ChiefComplaintExamForm = ({
       lowerStatus,
       diagnosisNotes: diagnosisNotes.trim(),
       treatmentPlanNotes: treatmentPlanNotes.trim(),
-      // the review page can attach patientId/visitId and submit
+      isChildMode,
     };
   }, [
     chiefComplaint,
@@ -182,6 +268,7 @@ const ChiefComplaintExamForm = ({
     lowerStatus,
     diagnosisNotes,
     treatmentPlanNotes,
+    isChildMode,
   ]);
 
   /* ========================
@@ -199,7 +286,7 @@ const ChiefComplaintExamForm = ({
     return () => clearTimeout(id);
   }, [payload, DRAFT_KEY]);
 
-  // Restore on mount; merge with initial
+  // Restore on mount or when patientId changes
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -213,49 +300,72 @@ const ChiefComplaintExamForm = ({
       setOtherTrigger(draft.otherTrigger ?? initial.otherTrigger ?? "");
 
       setDiagnosisNotes(draft.diagnosisNotes ?? initial.diagnosisNotes ?? "");
-      setTreatmentPlanNotes(draft.treatmentPlanNotes ?? initial.treatmentPlanNotes ?? "");
+      setTreatmentPlanNotes(
+        draft.treatmentPlanNotes ?? initial.treatmentPlanNotes ?? ""
+      );
+
+      const childMode = draft.isChildMode ?? initial.isChildMode ?? false;
+      setIsChildMode(childMode);
+      const sz = childMode ? 10 : 16;
 
       const dUpperGrades =
-        draft.upperGrades?.length === 16
+        draft.upperGrades?.length === sz
           ? draft.upperGrades
           : draft.findings?.upper?.map((t) => t.grade) ?? [];
       const dLowerGrades =
-        draft.lowerGrades?.length === 16
+        draft.lowerGrades?.length === sz
           ? draft.lowerGrades
           : draft.findings?.lower?.map((t) => t.grade) ?? [];
       const dUpperStatus =
-        draft.upperStatus?.length === 16
+        draft.upperStatus?.length === sz
           ? draft.upperStatus
           : draft.findings?.upper?.map((t) => t.status) ?? [];
       const dLowerStatus =
-        draft.lowerStatus?.length === 16
+        draft.lowerStatus?.length === sz
           ? draft.lowerStatus
           : draft.findings?.lower?.map((t) => t.status) ?? [];
 
-      const iUpperGrades = initial.upperGrades?.length === 16 ? initial.upperGrades : Array(16).fill("");
-      const iLowerGrades = initial.lowerGrades?.length === 16 ? initial.lowerGrades : Array(16).fill("");
-      const iUpperStatus = initial.upperStatus?.length === 16 ? initial.upperStatus : Array(16).fill("");
-      const iLowerStatus = initial.lowerStatus?.length === 16 ? initial.lowerStatus : Array(16).fill("");
+      const iUpperGrades =
+        initial.upperGrades?.length === sz
+          ? initial.upperGrades
+          : Array(sz).fill("");
+      const iLowerGrades =
+        initial.lowerGrades?.length === sz
+          ? initial.lowerGrades
+          : Array(sz).fill("");
+      const iUpperStatus =
+        initial.upperStatus?.length === sz
+          ? initial.upperStatus
+          : Array(sz).fill("");
+      const iLowerStatus =
+        initial.lowerStatus?.length === sz
+          ? initial.lowerStatus
+          : Array(sz).fill("");
 
-      setUpperGrades(dUpperGrades.length === 16 ? dUpperGrades : iUpperGrades);
-      setLowerGrades(dLowerGrades.length === 16 ? dLowerGrades : iLowerGrades);
-      setUpperStatus(dUpperStatus.length === 16 ? dUpperStatus : iUpperStatus);
-      setLowerStatus(dLowerStatus.length === 16 ? dLowerStatus : iLowerStatus);
-    } catch {}
+      setUpperGrades(dUpperGrades.length === sz ? dUpperGrades : iUpperGrades);
+      setLowerGrades(dLowerGrades.length === sz ? dLowerGrades : iLowerGrades);
+      setUpperStatus(dUpperStatus.length === sz ? dUpperStatus : iUpperStatus);
+      setLowerStatus(dLowerStatus.length === sz ? dLowerStatus : iLowerStatus);
+    } catch (error) {
+      console.error("Error restoring draft:", error);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [DRAFT_KEY]);
 
   /* ========================
      Validation
      ======================== */
   const validate = (data = payload) => {
     const e = {};
-    if (!data.chiefComplaint) e.chiefComplaint = "Please enter the chief complaint";
-    if (triggerFactors.includes("Other") && !otherTrigger.trim()) e.otherTrigger = "Please specify other trigger";
-    // Soft caps
+    if (!data.chiefComplaint)
+      e.chiefComplaint = "Please enter the chief complaint";
+    if (triggerFactors.includes("Other") && !otherTrigger.trim())
+      e.otherTrigger = "Please specify other trigger";
     const tooLong = (s) => s && s.length > MAX_NOTES;
-    if (tooLong(data.diagnosisNotes)) e.diagnosisNotes = `Keep under ${MAX_NOTES} characters`;
-    if (tooLong(data.treatmentPlanNotes)) e.treatmentPlanNotes = `Keep under ${MAX_NOTES} characters`;
+    if (tooLong(data.diagnosisNotes))
+      e.diagnosisNotes = `Keep under ${MAX_NOTES} characters`;
+    if (tooLong(data.treatmentPlanNotes))
+      e.treatmentPlanNotes = `Keep under ${MAX_NOTES} characters`;
     return e;
   };
 
@@ -287,7 +397,6 @@ const ChiefComplaintExamForm = ({
     });
     if (Object.keys(emap).length) return;
 
-    // Just pass up; Review step will POST/PUT
     setSaving(true);
     try {
       onSave?.(payload);
@@ -300,26 +409,15 @@ const ChiefComplaintExamForm = ({
   };
 
   const clearGrid = () => {
-    setUpperGrades(Array(16).fill("")); setLowerGrades(Array(16).fill(""));
-    setUpperStatus(Array(16).fill("")); setLowerStatus(Array(16).fill(""));
+    setUpperGrades(Array(size).fill(""));
+    setLowerGrades(Array(size).fill(""));
+    setUpperStatus(Array(size).fill(""));
+    setLowerStatus(Array(size).fill(""));
   };
 
   const copyUpperToLower = () => {
     setLowerGrades([...upperGrades]);
     setLowerStatus([...upperStatus]);
-  };
-
-  const exportJSON = () => {
-    try {
-      const data = JSON.stringify(payload, null, 2);
-      const blob = new Blob([data], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "dental-exam.json";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
   };
 
   // Helpers to read currently selected tooth's values
@@ -336,8 +434,15 @@ const ChiefComplaintExamForm = ({
       ? lowerStatus[selected.index]
       : "";
 
+  const teethLabels = useMemo(
+    () => (isChildMode ? childTeethLetters : adultTeethNumbers),
+    [isChildMode]
+  );
+
   const toothLabel = selected
-    ? `${selected.jaw === "upper" ? "Upper" : "Lower"} — ${teethNumbers[selected.index]}`
+    ? `${selected.jaw === "upper" ? "Upper" : "Lower"} — ${
+        teethLabels[selected.index]
+      }`
     : "";
 
   // Keyboard navigation for cells
@@ -345,21 +450,27 @@ const ChiefComplaintExamForm = ({
     const isUpper = jaw === "upper";
     const refs = isUpper ? gridRefsUpper.current : gridRefsLower.current;
     const otherRefs = isUpper ? gridRefsLower.current : gridRefsUpper.current;
+    const maxIdx = size - 1;
 
     if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault(); openPicker(jaw, idx); return;
+      e.preventDefault();
+      openPicker(jaw, idx);
+      return;
     }
     if (e.key === "ArrowRight") {
-      e.preventDefault(); (refs[idx + 1] || refs[idx])?.current?.focus(); return;
+      e.preventDefault();
+      refs[Math.min(idx + 1, maxIdx)]?.focus();
+      return;
     }
     if (e.key === "ArrowLeft") {
-      e.preventDefault(); (refs[idx - 1] || refs[idx])?.current?.focus(); return;
+      e.preventDefault();
+      refs[Math.max(idx - 1, 0)]?.focus();
+      return;
     }
-    if (e.key === "ArrowUp") {
-      e.preventDefault(); (otherRefs[idx] || otherRefs[0])?.current?.focus(); return;
-    }
-    if (e.key === "ArrowDown") {
-      e.preventDefault(); (otherRefs[idx] || otherRefs[0])?.current?.focus(); return;
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      otherRefs[idx]?.focus();
+      return;
     }
   };
 
@@ -370,6 +481,169 @@ const ChiefComplaintExamForm = ({
     return { g, s };
   }, [upperGrades, lowerGrades, upperStatus, lowerStatus]);
 
+  // Render grid
+  const renderTeethGrid = () => (
+    <div className="p-5 border border-gray-200 rounded-xl bg-gray-50">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold text-gray-800">Dental Findings</h3>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={copyUpperToLower}
+            className="text-sm rounded-xl border px-2.5 py-3 border-gray-300 bg-white hover:bg-gray-50"
+            title="Copy upper grades & status to lower row"
+          >
+            Copy Upper → Lower
+          </button>
+          <button
+            type="button"
+            onClick={clearGrid}
+            className="text-sm rounded-xl border px-2.5 py-3 border-gray-300 bg-white hover:bg-gray-50"
+            title="Clear all grades & status"
+          >
+            Clear Grid
+          </button>
+          <div className="inline-flex rounded-xl border border-gray-300 bg-white p-1">
+            <button
+              type="button"
+              onClick={() => isChildMode && toggleChildMode()}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                !isChildMode
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              Adult
+            </button>
+            <button
+              type="button"
+              onClick={() => !isChildMode && toggleChildMode()}
+              className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                isChildMode
+                  ? "bg-blue-600 text-white"
+                  : "text-gray-700 hover:bg-gray-100"
+              }`}
+            >
+              Child
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
+        <span>Upper (Right → Left)</span>
+        <span className="rounded bg-white px-2 py-0.5" aria-live="polite">
+          Marked: {markedCount.g} grades / {markedCount.s} status
+        </span>
+      </div>
+
+      {/* Upper grades row */}
+      <GridN n={size} className="mb-2" role="row">
+        {upperGrades.map((grade, idx) => (
+          <button
+            key={`u-${idx}`}
+            type="button"
+            ref={(el) => (gridRefsUpper.current[idx] = el)}
+            onClick={() => openPicker("upper", idx)}
+            onKeyDown={(e) => handleKey(e, "upper", idx)}
+            className={`h-10 rounded-md border text-sm font-medium flex items-center justify-center transition-all
+              ${getColorClass(grade)} ${
+              grade ? "shadow-sm" : ""
+            } focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+            aria-label={`Upper tooth ${teethLabels[idx]} grade/status`}
+            title={
+              upperStatus[idx]
+                ? `Status: ${upperStatus[idx]}`
+                : "Set Grade/Status"
+            }
+            tabIndex={0}
+          >
+            {grade || "-"}
+          </button>
+        ))}
+      </GridN>
+
+      {/* Upper labels */}
+      <GridN n={size} className="mb-5">
+        {teethLabels.map((label, idx) => (
+          <div
+            key={`un-${idx}`}
+            className="text-center text-sm font-medium text-gray-700 select-none"
+          >
+            {label}
+          </div>
+        ))}
+      </GridN>
+
+      <div className="text-xs text-gray-500 mb-2">Lower (Right → Left)</div>
+
+      {/* Lower labels */}
+      <GridN n={size} className="mb-2">
+        {teethLabels.map((label, idx) => (
+          <div
+            key={`ln-${idx}`}
+            className="text-center text-sm font-medium text-gray-700 select-none"
+          >
+            {label}
+          </div>
+        ))}
+      </GridN>
+
+      {/* Lower grades row */}
+      <GridN n={size} role="row">
+        {lowerGrades.map((grade, idx) => (
+          <button
+            key={`l-${idx}`}
+            type="button"
+            ref={(el) => (gridRefsLower.current[idx] = el)}
+            onClick={() => openPicker("lower", idx)}
+            onKeyDown={(e) => handleKey(e, "lower", idx)}
+            className={`h-10 rounded-md border text-sm font-medium flex items-center justify-center transition-all
+              ${getColorClass(grade)} ${
+              grade ? "shadow-sm" : ""
+            } focus:outline-none focus:ring-2 focus:ring-indigo-500`}
+            aria-label={`Lower tooth ${teethLabels[idx]} grade/status`}
+            title={
+              lowerStatus[idx]
+                ? `Status: ${lowerStatus[idx]}`
+                : "Set Grade/Status"
+            }
+            tabIndex={0}
+          >
+            {grade || "-"}
+          </button>
+        ))}
+      </GridN>
+
+      {/* Legend */}
+      <div className="mt-6">
+        <h4 className="font-medium text-sm text-gray-700 mb-3">GRADE LEGEND</h4>
+        <div className="flex gap-6 flex-row flex-wrap justify-center text-sm">
+          <div className="flex items-center">
+            <span className="w-5 h-5 rounded bg-green-100 border border-green-300 mr-2 flex-shrink-0"></span>
+            <span>A — No issue</span>
+          </div>
+          <div className="flex items-center">
+            <span className="w-5 h-5 rounded bg-yellow-100 border border-yellow-300 mr-2 flex-shrink-0"></span>
+            <span>B — Mild</span>
+          </div>
+          <div className="flex items-center">
+            <span className="w-5 h-5 rounded bg-orange-100 border border-orange-300 mr-2 flex-shrink-0"></span>
+            <span>C — Moderate</span>
+          </div>
+          <div className="flex items-center">
+            <span className="w-5 h-5 rounded bg-red-100 border border-red-300 mr-2 flex-shrink-0"></span>
+            <span>D — Severe</span>
+          </div>
+          <div className="flex items-center">
+            <span className="w-5 h-5 rounded bg-red-200 border border-red-400 mr-2 flex-shrink-0"></span>
+            <span>E — Extensive</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
     <form
       className="max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden"
@@ -378,7 +652,11 @@ const ChiefComplaintExamForm = ({
     >
       {/* Header */}
       <div className="bg-gradient-to-r from-indigo-50 to-white px-6 py-6 border-b border-gray-100">
-        <h2 className="text-2xl font-semibold text-gray-800">Dental Examination</h2>
+        <div>
+          <h2 className="text-2xl font-semibold text-gray-800">
+            Dental Examination
+          </h2>
+        </div>
         <p className="mt-1 text-sm text-gray-500">
           Record patient's chief complaint and dental findings
         </p>
@@ -387,38 +665,58 @@ const ChiefComplaintExamForm = ({
       {/* Submit error */}
       {submitError && (
         <div className="px-6 pt-4">
-          <p className="text-sm text-red-600">{submitError}</p>
+          <p className="text-sm text-red-600" role="alert">
+            {submitError}
+          </p>
         </div>
       )}
 
       <div className="px-6 py-6 space-y-8">
         {/* Chief Complaint */}
         <div className="space-y-2">
-          <label htmlFor="chief" className="block text-sm font-medium text-gray-700">
-            Patient's main reason for visit <span className="text-red-500">*</span>
+          <label
+            htmlFor="chief"
+            className="block text-sm font-medium text-gray-700"
+          >
+            Patient's Chief Complaint <span className="text-red-500">*</span>
           </label>
           <textarea
             id="chief"
             className={`w-full rounded-lg border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-              touched.chiefComplaint && errors.chiefComplaint ? "border-red-500" : "border-gray-300"
+              touched.chiefComplaint && errors.chiefComplaint
+                ? "border-red-500"
+                : "border-gray-300"
             }`}
             value={chiefComplaint}
-            onChange={(e) => setChiefComplaint(e.target.value.slice(0, MAX_NOTES))}
+            onChange={(e) =>
+              setChiefComplaint(e.target.value.slice(0, MAX_NOTES))
+            }
             onBlur={() => setFieldTouched("chiefComplaint")}
             placeholder="Describe the main problem"
             rows={3}
             aria-invalid={!!(touched.chiefComplaint && errors.chiefComplaint)}
-            aria-describedby="chief-error chief-help"
+            aria-describedby={
+              touched.chiefComplaint && errors.chiefComplaint
+                ? "chief-error"
+                : "chief-help"
+            }
           />
-          <p id="chief-help" className="text-xs text-gray-500">{count(chiefComplaint)}/{MAX_NOTES}</p>
-          {touched.chiefComplaint && (
-            <p id="chief-error" role="alert" className="text-xs text-red-600">{errors.chiefComplaint}</p>
+          <p id="chief-help" className="text-xs text-gray-500">
+            {count(chiefComplaint)}/{MAX_NOTES}
+          </p>
+          {touched.chiefComplaint && errors.chiefComplaint && (
+            <p id="chief-error" role="alert" className="text-xs text-red-600">
+              {errors.chiefComplaint}
+            </p>
           )}
         </div>
 
         {/* Duration & onset */}
         <div className="space-y-2">
-          <label htmlFor="duration" className="block text-sm font-medium text-gray-700">
+          <label
+            htmlFor="duration"
+            className="block text-sm font-medium text-gray-700"
+          >
             Duration & Onset
           </label>
           <input
@@ -432,217 +730,164 @@ const ChiefComplaintExamForm = ({
 
         {/* Trigger factors */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">Trigger factors (select all that apply)</label>
+          <label className="block text-sm font-medium text-gray-700">
+            Trigger factors (select all that apply)
+          </label>
           <div className="flex flex-wrap gap-2">
-            {["Hot", "Cold", "Sweets", "Biting", "Chewing", "Other"].map((factor) => {
-              const active = triggerFactors.includes(factor);
-              return (
-                <button
-                  type="button"
-                  key={factor}
-                  onClick={() => toggleTrigger(factor)}
-                  className={`px-4 py-2 rounded-full border text-sm font-medium transition-all flex items-center
-                    ${active ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"}`}
-                  aria-pressed={active}
-                >
-                  {active && (
-                    <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                  {factor}
-                </button>
-              );
-            })}
+            {["Hot", "Cold", "Sweets", "Biting", "Chewing", "Other"].map(
+              (factor) => {
+                const active = triggerFactors.includes(factor);
+                return (
+                  <button
+                    type="button"
+                    key={factor}
+                    onClick={() => toggleTrigger(factor)}
+                    className={`px-4 py-2 rounded-full border text-sm font-medium transition-all flex items-center ${
+                      active
+                        ? "bg-indigo-600 text-white border-indigo-600"
+                        : "bg-white text-gray-700 border-gray-300 hover:border-gray-400"
+                    }`}
+                    aria-pressed={active}
+                  >
+                    {active && (
+                      <svg
+                        className="w-4 h-4 mr-1.5"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    )}
+                    {factor}
+                  </button>
+                );
+              }
+            )}
           </div>
           {triggerFactors.includes("Other") && (
             <div className="mt-3">
-              <label htmlFor="otherTrigger" className="sr-only">Specify other trigger</label>
+              <label htmlFor="otherTrigger" className="sr-only">
+                Specify other trigger
+              </label>
               <input
                 id="otherTrigger"
                 className={`w-full rounded-lg border px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-                  touched.otherTrigger && errors.otherTrigger ? "border-red-500" : "border-gray-300"
+                  touched.otherTrigger && errors.otherTrigger
+                    ? "border-red-500"
+                    : "border-gray-300"
                 }`}
                 value={otherTrigger}
                 onChange={(e) => setOtherTrigger(e.target.value)}
                 onBlur={() => setFieldTouched("otherTrigger")}
                 placeholder="Specify other trigger"
                 aria-invalid={!!(touched.otherTrigger && errors.otherTrigger)}
-                aria-describedby="otherTrigger-error"
+                aria-describedby={
+                  touched.otherTrigger && errors.otherTrigger
+                    ? "otherTrigger-error"
+                    : undefined
+                }
               />
-              {touched.otherTrigger && (
-                <p id="otherTrigger-error" role="alert" className="mt-1 text-xs text-red-600">{errors.otherTrigger}</p>
+              {touched.otherTrigger && errors.otherTrigger && (
+                <p
+                  id="otherTrigger-error"
+                  role="alert"
+                  className="mt-1 text-xs text-red-600"
+                >
+                  {errors.otherTrigger}
+                </p>
               )}
             </div>
           )}
         </div>
 
         {/* Teeth Findings Grid */}
-        <div className="p-5 border border-gray-200 rounded-xl bg-gray-50">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-semibold text-gray-800">Dental Findings</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-600 bg-white px-2 py-1 rounded">
-                Tip: Use ← → ↑ ↓ to move, Enter to edit
-              </span>
-              <button
-                type="button"
-                onClick={copyUpperToLower}
-                className="text-xs rounded-md border px-2.5 py-1.5 bg-white hover:bg-gray-50"
-                title="Copy upper grades & status to lower row"
-              >
-                Copy Upper → Lower
-              </button>
-              <button
-                type="button"
-                onClick={clearGrid}
-                className="text-xs rounded-md border px-2.5 py-1.5 bg-white hover:bg-gray-50"
-                title="Clear all grades & status"
-              >
-                Clear Grid
-              </button>
-              <button
-                type="button"
-                onClick={exportJSON}
-                className="text-xs rounded-md border px-2.5 py-1.5 bg-white hover:bg-gray-50"
-                title="Export current exam as JSON"
-              >
-                Export JSON
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center justify-between text-xs text-gray-500 mb-2">
-            <span>Upper (Right → Left)</span>
-            <span className="rounded bg-white px-2 py-0.5">Marked: {markedCount.g} grades / {markedCount.s} status</span>
-          </div>
-
-          {/* Upper Grade cells */}
-          <Grid16 className="mb-2" role="row">
-            {upperGrades.map((grade, idx) => (
-              <button
-                key={`u-${idx}`}
-                type="button"
-                ref={gridRefsUpper.current[idx]}
-                onClick={() => openPicker("upper", idx)}
-                onKeyDown={(e) => handleKey(e, "upper", idx)}
-                className={`h-10 rounded-md border text-sm font-medium flex items-center justify-center transition-all
-                  ${getColorClass(grade)} ${grade ? "shadow-sm" : ""} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                aria-label={`Upper tooth ${teethNumbers[idx]} grade/status`}
-                title={upperStatus[idx] ? `Status: ${upperStatus[idx]}` : "Set Grade/Status"}
-                tabIndex={0}
-              >
-                {grade || "-"}
-              </button>
-            ))}
-          </Grid16>
-
-          {/* Upper tooth numbers */}
-          <Grid16 className="mb-5">
-            {teethNumbers.map((num, idx) => (
-              <div key={`un-${idx}`} className="text-center text-sm font-medium text-gray-700 select-none">
-                {num}
-              </div>
-            ))}
-          </Grid16>
-
-          <div className="text-xs text-gray-500 mb-2">Lower (Right ← Left)</div>
-
-          {/* Lower tooth numbers */}
-          <Grid16 className="mb-2">
-            {teethNumbers.map((num, idx) => (
-              <div key={`ln-${idx}`} className="text-center text-sm font-medium text-gray-700 select-none">
-                {num}
-              </div>
-            ))}
-          </Grid16>
-
-          {/* Lower Grade cells */}
-          <Grid16 role="row">
-            {lowerGrades.map((grade, idx) => (
-              <button
-                key={`l-${idx}`}
-                type="button"
-                ref={gridRefsLower.current[idx]}
-                onClick={() => openPicker("lower", idx)}
-                onKeyDown={(e) => handleKey(e, "lower", idx)}
-                className={`h-10 rounded-md border text-sm font-medium flex items-center justify-center transition-all
-                  ${getColorClass(grade)} ${grade ? "shadow-sm" : ""} focus:outline-none focus:ring-2 focus:ring-indigo-500`}
-                aria-label={`Lower tooth ${teethNumbers[idx]} grade/status`}
-                title={lowerStatus[idx] ? `Status: ${lowerStatus[idx]}` : "Set Grade/Status"}
-                tabIndex={0}
-              >
-                {grade || "-"}
-              </button>
-            ))}
-          </Grid16>
-
-          {/* Legend */}
-          <div className="mt-6">
-            <h4 className="font-medium text-sm text-gray-700 mb-3">GRADE LEGEND</h4>
-            <div className="flex gap-6 flex-col md:flex-row justify-center text-sm">
-              <div className="flex items-center">
-                <span className="w-5 h-5 rounded bg-green-100 border border-green-300 mr-2 flex-shrink-0"></span>
-                <span>A — No issue</span>
-              </div>
-              <div className="flex items-center">
-                <span className="w-5 h-5 rounded bg-yellow-100 border border-yellow-300 mr-2 flex-shrink-0"></span>
-                <span>B — Mild</span>
-              </div>
-              <div className="flex items-center">
-                <span className="w-5 h-5 rounded bg-orange-100 border border-orange-300 mr-2 flex-shrink-0"></span>
-                <span>C — Moderate</span>
-              </div>
-              <div className="flex items-center">
-                <span className="w-5 h-5 rounded bg-red-100 border border-red-300 mr-2 flex-shrink-0"></span>
-                <span>D — Severe</span>
-              </div>
-              <div className="flex items-center">
-                <span className="w-5 h-5 rounded bg-red-200 border border-red-400 mr-2 flex-shrink-0"></span>
-                <span>E — Extensive</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        {renderTeethGrid()}
 
         {/* Diagnosis Notes */}
         <div className="space-y-1">
-          <label htmlFor="diag" className="block text-sm font-medium text-gray-700">Diagnosis Notes</label>
+          <label
+            htmlFor="diag"
+            className="block text-sm font-medium text-gray-700"
+          >
+            Diagnosis Notes
+          </label>
           <textarea
             id="diag"
             className={`w-full rounded-lg border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-              touched.diagnosisNotes && errors.diagnosisNotes ? "border-red-500" : "border-gray-300"
+              touched.diagnosisNotes && errors.diagnosisNotes
+                ? "border-red-500"
+                : "border-gray-300"
             }`}
             value={diagnosisNotes}
-            onChange={(e) => setDiagnosisNotes(e.target.value.slice(0, MAX_NOTES))}
+            onChange={(e) =>
+              setDiagnosisNotes(e.target.value.slice(0, MAX_NOTES))
+            }
             onBlur={() => setFieldTouched("diagnosisNotes")}
             placeholder="Enter diagnosis details"
             rows={3}
             aria-invalid={!!(touched.diagnosisNotes && errors.diagnosisNotes)}
-            aria-describedby="diag-help diag-error"
+            aria-describedby={
+              touched.diagnosisNotes && errors.diagnosisNotes
+                ? "diag-error"
+                : "diag-help"
+            }
           />
-          <p id="diag-help" className="text-xs text-gray-500">{count(diagnosisNotes)}/{MAX_NOTES}</p>
-          {touched.diagnosisNotes && <p id="diag-error" className="text-xs text-red-600" role="alert">{errors.diagnosisNotes}</p>}
+          <p id="diag-help" className="text-xs text-gray-500">
+            {count(diagnosisNotes)}/{MAX_NOTES}
+          </p>
+          {touched.diagnosisNotes && errors.diagnosisNotes && (
+            <p id="diag-error" className="text-xs text-red-600" role="alert">
+              {errors.diagnosisNotes}
+            </p>
+          )}
         </div>
 
         {/* Treatment Plan Notes */}
         <div className="space-y-1">
-          <label htmlFor="plan" className="block text-sm font-medium text-gray-700">Treatment Plan Notes</label>
+          <label
+            htmlFor="plan"
+            className="block text-sm font-medium text-gray-700"
+          >
+            Treatment Plan Notes
+          </label>
           <textarea
             id="plan"
             className={`w-full rounded-lg border px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
-              touched.treatmentPlanNotes && errors.treatmentPlanNotes ? "border-red-500" : "border-gray-300"
+              touched.treatmentPlanNotes && errors.treatmentPlanNotes
+                ? "border-red-500"
+                : "border-gray-300"
             }`}
             value={treatmentPlanNotes}
-            onChange={(e) => setTreatmentPlanNotes(e.target.value.slice(0, MAX_NOTES))}
+            onChange={(e) =>
+              setTreatmentPlanNotes(e.target.value.slice(0, MAX_NOTES))
+            }
             onBlur={() => setFieldTouched("treatmentPlanNotes")}
             placeholder="Enter treatment plan details"
             rows={3}
-            aria-invalid={!!(touched.treatmentPlanNotes && errors.treatmentPlanNotes)}
-            aria-describedby="plan-help plan-error"
+            aria-invalid={
+              !!(touched.treatmentPlanNotes && errors.treatmentPlanNotes)
+            }
+            aria-describedby={
+              touched.treatmentPlanNotes && errors.treatmentPlanNotes
+                ? "plan-error"
+                : "plan-help"
+            }
           />
-          <p id="plan-help" className="text-xs text-gray-500">{count(treatmentPlanNotes)}/{MAX_NOTES}</p>
-          {touched.treatmentPlanNotes && <p id="plan-error" className="text-xs text-red-600" role="alert">{errors.treatmentPlanNotes}</p>}
+          <p id="plan-help" className="text-xs text-gray-500">
+            {count(treatmentPlanNotes)}/{MAX_NOTES}
+          </p>
+          {touched.treatmentPlanNotes && errors.treatmentPlanNotes && (
+            <p id="plan-error" className="text-xs text-red-600" role="alert">
+              {errors.treatmentPlanNotes}
+            </p>
+          )}
         </div>
       </div>
 
@@ -667,7 +912,9 @@ const ChiefComplaintExamForm = ({
             <button
               type="submit"
               className={`rounded-lg px-5 py-2.5 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors ${
-                isFormValid && !saving ? "bg-indigo-600 hover:bg-indigo-700" : "bg-indigo-400 cursor-not-allowed"
+                isFormValid && !saving
+                  ? "bg-indigo-600 hover:bg-indigo-700"
+                  : "bg-indigo-400 cursor-not-allowed"
               }`}
               disabled={!isFormValid || saving}
             >
@@ -681,7 +928,7 @@ const ChiefComplaintExamForm = ({
       <Modal
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}
-        title={selected ? `Tooth ${teethNumbers[selected.index]} (${selected.jaw === "upper" ? "Upper" : "Lower"})` : "Set Grade & Status"}
+        title={selected ? `Tooth ${toothLabel}` : "Set Grade & Status"}
       >
         {selected && (
           <PickerContent
@@ -699,7 +946,12 @@ const ChiefComplaintExamForm = ({
 /* ========================
    Picker Content
    ======================== */
-const PickerContent = ({ toothLabel, currentGrade, currentStatus, onApply }) => {
+const PickerContent = ({
+  toothLabel,
+  currentGrade,
+  currentStatus,
+  onApply,
+}) => {
   const [g, setG] = useState(currentGrade || "");
   const [s, setS] = useState(currentStatus || "");
 
@@ -711,7 +963,8 @@ const PickerContent = ({ toothLabel, currentGrade, currentStatus, onApply }) => 
   return (
     <div className="space-y-6">
       <div className="text-sm text-gray-600 mb-4">
-        Select grade and status for <span className="font-medium text-gray-800">{toothLabel}</span>
+        Select grade and status for{" "}
+        <span className="font-medium text-gray-800">{toothLabel}</span>
       </div>
 
       {/* Grade buttons */}
@@ -728,12 +981,26 @@ const PickerContent = ({ toothLabel, currentGrade, currentStatus, onApply }) => 
                 onClick={() => setG(opt)}
                 className={`px-4 py-2 rounded-lg border text-sm font-medium transition-all flex items-center
                   ${opt ? getColorClass(opt) : "bg-white border-gray-200"}
-                  ${active ? "ring-2 ring-offset-1 ring-indigo-500" : "hover:bg-gray-50"}
-                `}
+                  ${
+                    active
+                      ? "ring-2 ring-offset-1 ring-indigo-500"
+                      : "hover:bg-gray-50"
+                  }`}
               >
                 {active && opt && (
-                  <svg className="w-4 h-4 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  <svg
+                    className="w-4 h-4 mr-1.5"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
                   </svg>
                 )}
                 {label}
@@ -755,9 +1022,11 @@ const PickerContent = ({ toothLabel, currentGrade, currentStatus, onApply }) => 
                 key={opt || "clear-status"}
                 type="button"
                 onClick={() => setS(opt)}
-                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors
-                  ${active ? "bg-indigo-600 text-white border-indigo-600" : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}
-                `}
+                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  active
+                    ? "bg-indigo-600 text-white border-indigo-600"
+                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                }`}
               >
                 {label}
               </button>

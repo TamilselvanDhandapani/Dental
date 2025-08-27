@@ -1,6 +1,7 @@
+// src/components/Doctor/Patients.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getPatients } from "../../utils/api";
+import { getPatients, getPatient } from "../../utils/api"; // ⬅️ import getPatient
 
 const calcAge = (dob) => {
   if (!dob) return "";
@@ -20,6 +21,66 @@ const formatDate = (v) => {
     ? "—"
     : d.toLocaleDateString("en-IN", { year: "numeric", month: "short", day: "numeric" });
 };
+
+/** Detect if a URL is a Supabase Storage signed URL (expires) */
+const isSupabaseSignedUrl = (u = "") =>
+  typeof u === "string" && /\/storage\/v1\/object\/(?:sign|public)\//.test(u) && !/imagekit\.io/i.test(u);
+
+/** Avatar component that refreshes an expired signed URL once (uses authed API) */
+function PatientAvatar({ patient }) {
+  const initials =
+    `${patient.first_name?.[0] ?? ""}${patient.last_name?.[0] ?? ""}` || "👤";
+  const [src, setSrc] = useState(patient.photo_url || "");
+  const [triedRefresh, setTriedRefresh] = useState(false);
+
+  useEffect(() => {
+    setSrc(patient.photo_url || "");
+    setTriedRefresh(false);
+  }, [patient.photo_url]);
+
+  const refreshSignedUrl = async () => {
+    try {
+      const json = await getPatient(patient.id); // ⬅️ includes Supabase JWT
+      const fresh = json?.patient?.photo_url || "";
+      if (fresh && fresh !== src) {
+        setSrc(fresh);
+        return true;
+      }
+    } catch {
+      // ignore
+    }
+    return false;
+  };
+
+  if (!src) {
+    return (
+      <div className="h-12 w-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-medium text-lg group-hover:bg-indigo-200 transition-colors duration-200">
+        {initials}
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={`${patient.first_name ?? ""} ${patient.last_name ?? ""}`.trim() || "Patient photo"}
+      className="h-12 w-12 rounded-full object-cover border border-gray-200 group-hover:ring-2 group-hover:ring-indigo-200 transition"
+      loading="lazy"
+      decoding="async"
+      onError={async (e) => {
+        // Only try to refresh if the URL looks like a signed Supabase URL
+        if (!triedRefresh && isSupabaseSignedUrl(src)) {
+          setTriedRefresh(true);
+          const ok = await refreshSignedUrl();
+          if (ok) return; // src updated; browser will retry
+        }
+        // Final fallback
+        e.currentTarget.onerror = null;
+        e.currentTarget.src = "/fallback-avatar.png";
+      }}
+    />
+  );
+}
 
 const Patients = () => {
   const navigate = useNavigate();
@@ -69,7 +130,6 @@ const Patients = () => {
             <h1 className="text-3xl font-bold text-gray-900">Patients</h1>
             <p className="text-sm text-gray-600 mt-2">All patients in your care</p>
           </div>
-         
         </div>
 
         {/* Search and filter card */}
@@ -102,7 +162,7 @@ const Patients = () => {
           </div>
         </div>
 
-        {/* Patient cards grid */}
+        {/* Loading skeletons */}
         {loading && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {[1, 2, 3, 4, 5, 6].map((item) => (
@@ -124,6 +184,7 @@ const Patients = () => {
           </div>
         )}
 
+        {/* Error state */}
         {err && !loading && (
           <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-100">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-red-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -137,6 +198,7 @@ const Patients = () => {
           </div>
         )}
 
+        {/* Empty state */}
         {!loading && !err && filtered.length === 0 && (
           <div className="bg-white rounded-xl shadow-sm p-8 text-center border border-gray-100">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -153,6 +215,7 @@ const Patients = () => {
           </div>
         )}
 
+        {/* Patients grid */}
         {!loading && !err && filtered.length > 0 && (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {filtered.map((p) => (
@@ -162,16 +225,20 @@ const Patients = () => {
                 onClick={() => navigate(`/patients/${p.id}`)}
               >
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="h-12 w-12 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600 font-medium text-lg group-hover:bg-indigo-200 transition-colors duration-200">
-                    {p.first_name?.[0]}{p.last_name?.[0]}
-                  </div>
+                  <PatientAvatar patient={p} />
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-gray-900 truncate">{p.first_name} {p.last_name}</h3>
-                    <p className="text-sm text-gray-500 truncate">{p.gender || "—"} • {calcAge(p.dob) || "—"} years</p>
+                    <h3 className="font-semibold text-gray-900 truncate">
+                      {p.first_name} {p.last_name}
+                    </h3>
+                    <p className="text-sm text-gray-500 truncate">
+                      {p.gender || "—"} • {calcAge(p.dob) || "—"} years
+                    </p>
                   </div>
-                  <span className="bg-green-100 text-green-800 text-xs px-2.5 py-0.5 rounded-full font-medium">Active</span>
+                  <span className="bg-green-100 text-green-800 text-xs px-2.5 py-0.5 rounded-full font-medium">
+                    Active
+                  </span>
                 </div>
-                
+
                 <div className="space-y-2 mb-5">
                   <div className="flex items-center text-sm text-gray-600">
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-2 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -186,22 +253,7 @@ const Patients = () => {
                     <span className="truncate">{p.email || "No email"}</span>
                   </div>
                 </div>
-                
-                <div className="flex items-center justify-between pt-4 border-t border-gray-100">
-                  <span className="text-xs text-gray-500">Added {formatDate(p.created_at)}</span>
-                  <div className="flex space-x-2">
-                    <button className="p-1.5 text-gray-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors duration-200">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                      </svg>
-                    </button>
-                    <button className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg hover:bg-red-50 transition-colors duration-200">
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
+
               </div>
             ))}
           </div>

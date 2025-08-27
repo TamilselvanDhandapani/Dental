@@ -1,3 +1,4 @@
+// src/components/ProcedureTrackingForm.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /* =========================================================
@@ -37,9 +38,9 @@ const inr = (value) =>
     .replace("₹", "₹ ");
 
 const ProcedureTrackingForm = ({
-  initial = {},     // can contain { rows: [...] } from an existing visit
-  patientId,        // used only to scope local draft key
-  visitId,          // used only to scope local draft key
+  initial = {}, // may contain { rows: [...] } from an existing visit
+  patientId,    // used only to scope local draft key
+  visitId,      // used only to scope local draft key
   onBack,
   onNext,
   onSave,
@@ -69,16 +70,21 @@ const ProcedureTrackingForm = ({
     return clampNum(total - paid);
   };
 
+  const rowIsMeaningful = (r) => {
+    const anyMoney = hasValue(r.total) || hasValue(r.paid);
+    return (
+      anyMoney ||
+      hasValue(r.procedure) ||
+      hasValue(r.visitDate) ||
+      hasValue(r.nextApptDate)
+    );
+  };
+
   const validateRow = (r) => {
     const e = {};
     const total = parseNum(r.total);
     const paid = parseNum(r.paid);
-    const anyMoney = hasValue(r.total) || hasValue(r.paid);
-    const anyContent =
-      anyMoney ||
-      hasValue(r.procedure) ||
-      hasValue(r.visitDate) ||
-      hasValue(r.nextApptDate);
+    const anyContent = rowIsMeaningful(r);
 
     if (anyContent && !hasValue(r.visitDate)) e.visitDate = "Visit date is required";
     if (hasValue(r.total) && total < 0) e.total = "Total must be ≥ 0";
@@ -109,6 +115,7 @@ const ProcedureTrackingForm = ({
 
   const addRow = () => {
     setRows((r) => [...r, emptyRow()]);
+    // focus the new Visit Date
     setTimeout(() => lastAddedRef.current?.focus(), 0);
   };
 
@@ -138,7 +145,7 @@ const ProcedureTrackingForm = ({
     return () => clearTimeout(id);
   }, [payload, DRAFT_KEY]);
 
-  // ---- Restore on mount ----
+  // ---- Restore on mount (and when draft key changes) ----
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
@@ -158,29 +165,21 @@ const ProcedureTrackingForm = ({
       }
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [DRAFT_KEY]);
 
   const handleSaveDraft = () => onSave?.(payload);
 
   // Build clean rows for the final submit (filter out empty ones, coerce numbers)
   const buildCleanRows = (rs) =>
     rs
-      .filter((r) => {
-        const anyMoney = hasValue(r.total) || hasValue(r.paid);
-        const anyContent =
-          anyMoney ||
-          hasValue(r.procedure) ||
-          hasValue(r.visitDate) ||
-          hasValue(r.nextApptDate);
-        return anyContent;
-      })
+      .filter(rowIsMeaningful)
       .map((r) => {
         const total = parseNum(r.total);
         const paid = parseNum(r.paid);
         return {
-          visitDate: r.visitDate || null,        // "YYYY-MM-DD"
+          visitDate: r.visitDate || null, // "YYYY-MM-DD"
           procedure: String(r.procedure || "").trim(),
-          nextApptDate: r.nextApptDate || null,  // "YYYY-MM-DD" or null
+          nextApptDate: r.nextApptDate || null, // "YYYY-MM-DD" or null
           total,
           paid,
           due: clampNum(total - paid),
@@ -205,11 +204,16 @@ const ProcedureTrackingForm = ({
     }
 
     // Build the network-shaped payload but DON'T send; give it to Review
-    const networkPayload = { procedures: cleaned, summary: {
-      total: cleaned.reduce((s, r) => s + r.total, 0),
-      paid: cleaned.reduce((s, r) => s + r.paid, 0),
-      due: clampNum(cleaned.reduce((s, r) => s + r.total, 0) - cleaned.reduce((s, r) => s + r.paid, 0)),
-    }};
+    const totalSum = cleaned.reduce((s, r) => s + r.total, 0);
+    const paidSum = cleaned.reduce((s, r) => s + r.paid, 0);
+    const networkPayload = {
+      procedures: cleaned,
+      summary: {
+        total: totalSum,
+        paid: paidSum,
+        due: clampNum(totalSum - paidSum),
+      },
+    };
 
     setSaving(true);
     try {
@@ -228,49 +232,22 @@ const ProcedureTrackingForm = ({
     }
   };
 
-  const exportJSON = () => {
-    try {
-      const data = JSON.stringify(payload, null, 2);
-      const blob = new Blob([data], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "procedure-tracking.json";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
-  };
-
-  const exportCSV = () => {
-    try {
-      const headers = ["Visit Date", "Next Appointment", "Procedure", "Total", "Paid", "Due"];
-      const lines = rows.map((r) =>
-        [
-          r.visitDate,
-          r.nextApptDate,
-          `"${(r.procedure || "").replace(/"/g, '""')}"`,
-          parseNum(r.total),
-          parseNum(r.paid),
-          r.due,
-        ].join(",")
-      );
-      const csv = [
-        headers.join(","),
-        ...lines,
-        "",
-        `Summary,,,${summary.total},${summary.paid},${summary.due}`,
-      ].join("\n");
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "procedure-tracking.csv";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
-  };
-
   const hasErrors = errors.some((m) => Object.keys(m).length);
+  const hasAnyMeaningfulRow = rows.some(rowIsMeaningful);
+  const canProceed = !hasErrors && hasAnyMeaningfulRow && !saving;
+
+  // Normalize money on blur while keeping free typing on change
+  const normalizeMoney = (idx, field) => {
+    setRows((prev) => {
+      const copy = prev.map((r) => ({ ...r }));
+      const v = copy[idx][field];
+      if (!hasValue(v)) return copy; // keep empty if empty
+      const fixed = parseNum(v).toFixed(2);
+      copy[idx][field] = fixed;
+      copy[idx].due = recomputeDue(copy[idx]);
+      return copy;
+    });
+  };
 
   return (
     <form
@@ -284,24 +261,6 @@ const ProcedureTrackingForm = ({
           <div>
             <h2 className="text-2xl font-semibold text-gray-800">Procedure Tracking & Payments</h2>
             <p className="mt-1 text-sm text-gray-500">Track dental procedures and payment details</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={exportCSV}
-              className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              title="Export as CSV"
-            >
-              Export CSV
-            </button>
-            <button
-              type="button"
-              onClick={exportJSON}
-              className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              title="Export as JSON"
-            >
-              Export JSON
-            </button>
           </div>
         </div>
       </div>
@@ -330,6 +289,7 @@ const ProcedureTrackingForm = ({
         <div className="space-y-6">
           {rows.map((row, idx) => {
             const err = errors[idx] || {};
+            const visitInputRef = idx === rows.length - 1 ? lastAddedRef : undefined;
             return (
               <div
                 key={idx}
@@ -341,7 +301,7 @@ const ProcedureTrackingForm = ({
                   <div className="md:col-span-3">
                     <label className="text-xs text-gray-500 block mb-1">Visit Date</label>
                     <input
-                      ref={idx === rows.length - 1 ? lastAddedRef : undefined}
+                      ref={visitInputRef}
                       type="date"
                       value={row.visitDate}
                       onChange={(e) => updateRow(idx, "visitDate", e.target.value)}
@@ -401,6 +361,7 @@ const ProcedureTrackingForm = ({
                       placeholder="0"
                       value={row.total}
                       onChange={(e) => updateRow(idx, "total", e.target.value)}
+                      onBlur={() => normalizeMoney(idx, "total")}
                       className={`w-full rounded-lg border px-3 py-2 text-right text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
                         err.total ? "border-red-500" : "border-gray-300"
                       }`}
@@ -425,6 +386,13 @@ const ProcedureTrackingForm = ({
                       placeholder="0"
                       value={row.paid}
                       onChange={(e) => updateRow(idx, "paid", e.target.value)}
+                      onBlur={() => normalizeMoney(idx, "paid")}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addRow();
+                        }
+                      }}
                       className={`w-full rounded-lg border px-3 py-2 text-right text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${
                         err.paid ? "border-red-500" : "border-gray-300"
                       }`}
@@ -494,7 +462,7 @@ const ProcedureTrackingForm = ({
         </div>
 
         {/* Summary */}
-        <div className="mt-6 p-4 rounded-lg bg-indigo-50 border border-indigo-100">
+        <div className="mt-6 p-4 rounded-lg bg-indigo-50 border border-indigo-100" aria-live="polite">
           <div className="grid grid-cols-3 gap-4 text-sm">
             <div className="flex flex-col">
               <span className="text-gray-600 text-xs">Total Amount</span>
@@ -535,9 +503,9 @@ const ProcedureTrackingForm = ({
             <button
               type="submit"
               className={`rounded-lg px-5 py-2.5 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors ${
-                (!hasErrors && !saving) ? "bg-indigo-600 hover:bg-indigo-700" : "bg-indigo-400 cursor-not-allowed"
+                canProceed ? "bg-indigo-600 hover:bg-indigo-700" : "bg-indigo-400 cursor-not-allowed"
               }`}
-              disabled={hasErrors || saving}
+              disabled={!canProceed}
             >
               {saving ? "Continuing…" : "Next"}
             </button>

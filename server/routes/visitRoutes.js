@@ -9,6 +9,9 @@ const {
   getNextApptForVisit,
   getNextApptsForVisit,
   getOverallNextAppts,
+  addVisitProcedure,
+  updateVisitProcedureByIndex,
+  deleteVisitProcedureByIndex,
 } = require("../controller/visitController");
 
 const router = express.Router();
@@ -16,26 +19,27 @@ const router = express.Router();
 // All visit routes require an authenticated user (JWT via Authorization header)
 router.use(requireUser);
 
-// routes/visit.routes.js (example)
+// --- Static paths first
+router.get("/appointments/next", getOverallNextAppts);
 
-// Create
+// --- Patient-scoped list/create
 router.post("/:patientId/visits", createVisit);
-
-// Read (list + single)
 router.get("/:patientId/visits", listVisitsByPatient);
-router.get("/:visitId", getVisit);
 
-// Update
-router.patch("/:visitId", updateVisit);
-
-// Delete
-router.delete("/:visitId", deleteVisit);
-
-// Next Appointment summary for a patient
+// --- More specific visit subpaths BEFORE the bare :visitId
 router.get("/:visitId/next-appt", getNextApptForVisit);
 router.get("/:visitId/next-appts", getNextApptsForVisit);
 
-// over All Appointments
-router.get("/appointments/next", getOverallNextAppts);
+// --- Bare :visitId last (will otherwise catch everything)
+router.get("/:visitId", getVisit);
+router.patch("/:visitId", updateVisit);
+router.delete("/:visitId", deleteVisit);
+
+
+// Procedures
+router.post('/:visitId/procedures', addVisitProcedure);
+router.patch('/:visitId/procedures/:index', updateVisitProcedureByIndex);
+router.delete('/:visitId/procedures/:index', deleteVisitProcedureByIndex);
+
 
 module.exports = router;

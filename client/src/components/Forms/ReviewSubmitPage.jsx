@@ -1,105 +1,202 @@
+// src/components/ReviewSubmitPage.jsx
 import React, { useMemo, useState } from "react";
 import {
   createPatient,
   upsertMedicalHistory,
   createVisit,
+  uploadPatientPhoto,      // ✅ shared ImageKit uploader (server-side)
+  updatePatientPhotoUrl,   // ✅ persist final CDN URL to patient
 } from "../../utils/api";
 
+/* -------------------------------------------------------------------------
+   Image URL helpers (no UI changes)
+---------------------------------------------------------------------------*/
+// If you store only ImageKit filePath, we can form a display URL using the
+// public endpoint (e.g. https://ik.imagekit.io/your_id). Keep it optional.
+const IK_BASE =
+  (typeof process !== "undefined" &&
+    process.env &&
+    process.env.NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT &&
+    process.env.NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT.replace(/\/$/, "")) ||
+  "";
 
-const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
-  // ---------- Helpers ----------
-  const formatDate = (dateString) => {
-    if (!dateString) return "Not specified";
-    const d = new Date(dateString);
-    if (isNaN(d.getTime())) return "Not specified";
-    return d.toLocaleDateString("en-IN", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  };
+/** Prefer a direct URL; fall back to thumbnail; if only filePath is present and
+ * we know the IK base, build a simple URL. */
+const pickIkDisplayUrl = (obj) => {
+  if (!obj || typeof obj !== "object") return null;
+  if (obj.url) return obj.url;
+  if (obj.thumbnailUrl) return obj.thumbnailUrl;
+  if (IK_BASE && obj.filePath) {
+    const path = String(obj.filePath).replace(/^\//, "");
+    return `${IK_BASE}/${path}`;
+  }
+  return null;
+};
 
-  const formatCurrency = (value) =>
-    new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })
-      .format(Number(value || 0))
-      .replace("₹", "₹ ");
+/** When ImageField provides an object or a string, prefer its direct URL. */
+const getImageKitUrl = (photoLike) => {
+  if (!photoLike) return null;
+  if (typeof photoLike === "string") return photoLike;
+  if (typeof photoLike === "object") return pickIkDisplayUrl(photoLike);
+  return null;
+};
 
-  const getGradeColor = (grade) => {
-    switch (grade) {
-      case "A":
-        return "bg-green-100 text-green-800";
-      case "B":
-        return "bg-yellow-100 text-yellow-800";
-      case "C":
-        return "bg-orange-100 text-orange-800";
-      case "D":
-        return "bg-red-100 text-red-800";
-      case "E":
-        return "bg-red-200 text-red-900";
-      default:
-        return "bg-gray-100 text-gray-800";
-    }
-  };
+/* -------------------------------------------------------------------------
+   Helpers (dates, currency, teeth, photo reconstruction)
+---------------------------------------------------------------------------*/
+const formatDate = (dateString) => {
+  if (!dateString) return "Not specified";
+  const d = new Date(dateString);
+  if (isNaN(d.getTime())) return "Not specified";
+  return d.toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" });
+};
 
-  const safeJoin = (...parts) => parts.filter(Boolean).join(", ");
+const formatCurrency = (value) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+    .format(Number(value || 0))
+    .replace("₹", "₹ ");
 
-  const calcAge = (dob) => {
-    if (!dob) return "";
-    const today = new Date();
-    const birth = new Date(dob);
-    if (isNaN(birth.getTime())) return "";
-    let a = today.getFullYear() - birth.getFullYear();
-    const m = today.getMonth() - birth.getMonth();
-    if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
-    return a >= 0 && Number.isFinite(a) ? String(a) : "";
-  };
+const getGradeColor = (grade) => {
+  switch (grade) {
+    case "A":
+      return "bg-green-100 text-green-800";
+    case "B":
+      return "bg-yellow-100 text-yellow-800";
+    case "C":
+      return "bg-orange-100 text-orange-800";
+    case "D":
+      return "bg-red-100 text-red-800";
+    case "E":
+      return "bg-red-200 text-red-900";
+    default:
+      return "bg-gray-100 text-gray-800";
+  }
+};
 
-  // Prefer formData.dentalExam, but support chiefComplaintExam key too
-  const dentalExam = formData.dentalExam || formData.chiefComplaintExam || {};
+const safeJoin = (...parts) => parts.filter(Boolean).join(", ");
 
-  const renderToothFindings = (findings = [], jawLabel) => {
-    const filtered = (findings || []).filter((f) => f?.grade || f?.status);
-    if (!filtered.length)
-      return <p className="text-gray-500">No findings recorded</p>;
+const calcAge = (dob) => {
+  if (!dob) return "";
+  const today = new Date();
+  const birth = new Date(dob);
+  if (isNaN(birth.getTime())) return "";
+  let a = today.getFullYear() - birth.getFullYear();
+  const m = today.getMonth() - birth.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) a--;
+  return a >= 0 && Number.isFinite(a) ? String(a) : "";
+};
 
-    return (
-      <div className="mt-2">
-        <h4 className="text-sm font-medium text-gray-700 mb-2">
-          {jawLabel} Jaw Findings
-        </h4>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-          {filtered.map((f, i) => (
-            <div key={`${jawLabel}-${i}`} className="border rounded-lg p-2">
-              <div className="flex justify-between items-center">
-                <span className="font-medium">Tooth {f.tooth}</span>
-                {f.grade ? (
-                  <span
-                    className={`text-xs px-2 py-1 rounded-full ${getGradeColor(
-                      f.grade
-                    )}`}
-                  >
-                    Grade: {f.grade}
-                  </span>
-                ) : (
-                  <span className="text-xs text-gray-500">—</span>
-                )}
-              </div>
-              <div className="mt-1 text-sm text-gray-600">
-                Status: {f.status || "—"}
-              </div>
+const TEETH = [8, 7, 6, 5, 4, 3, 2, 1, 1, 2, 3, 4, 5, 6, 7, 8];
+
+const buildFindingsFromGrades = (
+  upperGrades = [],
+  lowerGrades = [],
+  upperStatus = [],
+  lowerStatus = []
+) => {
+  const upper = Array.from({ length: 16 }).map((_, i) => ({
+    tooth: TEETH[i],
+    grade: upperGrades?.[i] || "",
+    status: upperStatus?.[i] || "",
+  }));
+  const lower = Array.from({ length: 16 }).map((_, i) => ({
+    tooth: TEETH[i],
+    grade: lowerGrades?.[i] || "",
+    status: lowerStatus?.[i] || "",
+  }));
+  return { upper, lower };
+};
+
+const normalize16 = (arr) =>
+  Array.from({ length: 16 }, (_, i) => {
+    const src = arr?.[i] || {};
+    return {
+      tooth: src.tooth ?? TEETH[i],
+      grade: src.grade ?? "",
+      status: src.status ?? "",
+    };
+  });
+
+// Convert data URL → File (used if only preview is available)
+const MAX_PHOTO_MB = 5;
+const dataUrlToFile = (dataUrl, fallbackName = "patient-photo") => {
+  try {
+    if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:image/")) return null;
+    const [header, base64] = dataUrl.split(",");
+    if (!base64) return null;
+    const mimeMatch = header.match(/data:(.*?);base64/);
+    const mime = (mimeMatch && mimeMatch[1]) || "image/png";
+    const ext = (mime.split("/")[1] || "png").replace("+xml", "");
+    const binary = atob(base64);
+    const len = binary.length;
+    const u8 = new Uint8Array(len);
+    for (let i = 0; i < len; i++) u8[i] = binary.charCodeAt(i);
+    if (u8.byteLength > MAX_PHOTO_MB * 1024 * 1024) return null;
+    return new File([u8], `${fallbackName}.${ext}`.replace(/\.+/, `.${ext}`), { type: mime });
+  } catch {
+    return null;
+  }
+};
+
+const safeName = (first, last) => {
+  const core = [first, last].filter(Boolean).join("-") || "patient";
+  return core
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+};
+
+const getNewPatientId = (obj) => {
+  if (!obj) return undefined;
+  if (obj.id) return obj.id;
+  if (obj.patient?.id) return obj.patient.id;
+  if (obj.patient_id) return obj.patient_id;
+  if (obj.data?.id) return obj.data.id;
+  if (obj.new_patient_id) return obj.new_patient_id;
+  if (obj.newPatientId) return obj.newPatientId;
+  if (Array.isArray(obj)) return getNewPatientId(obj[0]);
+  return undefined;
+};
+
+/* Small renderer for tooth findings */
+function renderToothFindings(findingsArr = [], jawLabel) {
+  const filtered = (findingsArr || []).filter((f) => f?.grade || f?.status);
+  if (!filtered.length) return <p className="text-gray-500">No findings recorded</p>;
+  return (
+    <div className="mt-2">
+      <h4 className="text-sm font-medium text-gray-700 mb-2">{jawLabel} Jaw Findings</h4>
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+        {filtered.map((f, i) => (
+          <div key={`${jawLabel}-${i}`} className="border rounded-lg p-2">
+            <div className="flex justify-between items-center">
+              <span className="font-medium">Tooth {f.tooth}</span>
+              {f.grade ? (
+                <span className={`text-xs px-2 py-1 rounded-full ${getGradeColor(f.grade)}`}>
+                  Grade: {f.grade}
+                </span>
+              ) : (
+                <span className="text-xs text-gray-500">—</span>
+              )}
             </div>
-          ))}
-        </div>
+            <div className="mt-1 text-sm text-gray-600">Status: {f.status || "—"}</div>
+          </div>
+        ))}
       </div>
-    );
-  };
+    </div>
+  );
+}
 
-  // ---------- Shorthands ----------
+/* -------------------------------------------------------------------------
+   Component
+---------------------------------------------------------------------------*/
+const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
+  // ---- Shorthands ---------------------------------------------------------
   const profile = formData.patientProfile || {};
   const mh = formData.medicalHistory || {};
   const procs = formData.procedures || {};
@@ -111,212 +208,26 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
   );
   const ageText = profile.age || calcAge(profile.dob);
 
-  // Support either shape: {rows[]} from older step, or {procedures[]} from new step
+  // Support either shape: {rows[]} (old) or {procedures[]} (new)
   const procedureRows = Array.isArray(procs.rows)
     ? procs.rows
     : Array.isArray(procs.procedures)
     ? procs.procedures
     : [];
 
-  // Problems chips
-  const probs = mh.problems || {};
-  const PROBLEM_LABELS = {
-    artificialValvesPacemaker: "Artificial Valves/Pacemakers",
-    asthma: "Asthma",
-    allergy: "Allergy",
-    bleedingTendency: "Bleeding Tendency",
-    epilepsySeizure: "Epilepsy/Seizure",
-    heartDisease: "Heart Disease",
-    hypHypertension: "Hypertension/Hypotension",
-    hormoneDisorder: "Hormone Disorder",
-    jaundiceLiver: "Jaundice/Liver Disease",
-    stomachUlcer: "Stomach Ulcer",
-    lowHighPressure: "Low/High Pressure",
-    arthritisJoint: "Arthritis/Joint Problem",
-    kidneyProblems: "Kidney Problems",
-    thyroidProblems: "Thyroid Problems",
-  };
-  const problemChips = Object.entries(PROBLEM_LABELS)
-    .filter(([k]) => probs[k])
-    .map(([key, label]) => (
-      <span
-        key={key}
-        className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-      >
-        {label}
-      </span>
-    ));
-  if (probs.otherProblem) {
-    problemChips.push(
-      <span
-        key="other"
-        className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full"
-      >
-        Other: {probs.otherProblemText || "Not specified"}
-      </span>
-    );
-  }
+  // Prefer formData.dentalExam, but support chiefComplaintExam key too
+  const examData = formData.dentalExam || formData.chiefComplaintExam || {};
 
-  // ---------- Issues banner (auto checks) ----------
-  const issues = useMemo(() => {
-    const list = [];
-
-    if (!profile.firstName || !profile.lastName) {
-      list.push({
-        section: "Patient Profile",
-        msg: "Full name is incomplete.",
-        idx: 1,
-        anchor: "#profile",
-      });
-    }
-    if (!profile.dob) {
-      list.push({
-        section: "Patient Profile",
-        msg: "Date of birth is missing.",
-        idx: 1,
-        anchor: "#profile",
-      });
-    }
-    if (!profile.gender) {
-      list.push({
-        section: "Patient Profile",
-        msg: "Gender is missing.",
-        idx: 1,
-        anchor: "#profile",
-      });
-    }
-    if (!profile.phone) {
-      list.push({
-        section: "Patient Profile",
-        msg: "Mobile number is missing.",
-        idx: 1,
-        anchor: "#profile",
-      });
-    }
-
-    if (mh.surgeryOrHospitalized === "Yes" && !mh.surgeryDetails) {
-      list.push({
-        section: "Medical History",
-        msg: "Add details for surgery/hospitalization.",
-        idx: 2,
-        anchor: "#medical",
-      });
-    }
-    if (mh.feverColdCough === "Yes" && !mh.feverDetails) {
-      list.push({
-        section: "Medical History",
-        msg: "Add current symptoms details.",
-        idx: 2,
-        anchor: "#medical",
-      });
-    }
-    if (mh.abnormalBleedingHistory === "Yes" && !mh.abnormalBleedingDetails) {
-      list.push({
-        section: "Medical History",
-        msg: "Add details for abnormal bleeding.",
-        idx: 2,
-        anchor: "#medical",
-      });
-    }
-    if (mh.takingMedicine === "Yes" && !mh.medicineDetails) {
-      list.push({
-        section: "Medical History",
-        msg: "List medicines (name, dose, frequency).",
-        idx: 2,
-        anchor: "#medical",
-      });
-    }
-    if (mh.medicationAllergy === "Yes" && !mh.medicationAllergyDetails) {
-      list.push({
-        section: "Medical History",
-        msg: "Specify medication allergies and reactions.",
-        idx: 2,
-        anchor: "#medical",
-      });
-    }
-    if (probs.otherProblem && !probs.otherProblemText) {
-      list.push({
-        section: "Medical History",
-        msg: "Describe the ‘Other’ medical problem.",
-        idx: 2,
-        anchor: "#medical",
-      });
-    }
-
-    if (!dentalExam.chiefComplaint) {
-      list.push({
-        section: "Dental Examination",
-        msg: "Chief complaint is missing.",
-        idx: 3,
-        anchor: "#dental",
-      });
-    }
-
-    return list;
-  }, [profile, mh, probs, dentalExam]);
-
-  // ---------- Derived helpers for submission ----------
-  const TEETH = [8,7,6,5,4,3,2,1, 1,2,3,4,5,6,7,8];
-  const buildFindingsFromGrades = (upperGrades = [], lowerGrades = [], upperStatus = [], lowerStatus = []) => {
-    const upper = Array.from({ length: 16 }).map((_, i) => ({
-      tooth: TEETH[i],
-      grade: upperGrades?.[i] || "",
-      status: upperStatus?.[i] || "",
-    }));
-    const lower = Array.from({ length: 16 }).map((_, i) => ({
-      tooth: TEETH[i],
-      grade: lowerGrades?.[i] || "",
-      status: lowerStatus?.[i] || "",
-    }));
-    return { upper, lower };
-  };
-
+  // Findings assembly
   const assembledFindings =
-    dentalExam.findings ||
+    examData.findings ||
     buildFindingsFromGrades(
-      dentalExam.upperGrades,
-      dentalExam.lowerGrades,
-      dentalExam.upperStatus,
-      dentalExam.lowerStatus
+      examData.upperGrades,
+      examData.lowerGrades,
+      examData.upperStatus,
+      examData.lowerStatus
     );
 
-  const hasDue =
-    Number(procs?.summary?.due || 0) > 0 ||
-    (Array.isArray(procedureRows) &&
-      procedureRows.some((r) => Number(r?.due || 0) > 0));
-
-  const [submitting, setSubmitting] = useState(false);
-  const [submitStep, setSubmitStep] = useState("");
-  const [submitError, setSubmitError] = useState("");
-
-  // Confirmation modal
-  const [confirmOpen, setConfirmOpen] = useState(false);
-
-  // Normalize findings to exactly 16 each
-  const normalize16 = (arr) =>
-    Array.from({ length: 16 }, (_, i) => {
-      const src = arr?.[i] || {};
-      return {
-        tooth: src.tooth ?? TEETH[i],
-        grade: src.grade ?? "",
-        status: src.status ?? "",
-      };
-    });
-
-  // Robust extractor for patient ID from various server shapes
-  const getNewPatientId = (obj) => {
-    if (!obj) return undefined;
-    if (obj.id) return obj.id;
-    if (obj.patient?.id) return obj.patient.id;
-    if (obj.patient_id) return obj.patient_id;
-    if (obj.data?.id) return obj.data.id;
-    if (obj.new_patient_id) return obj.new_patient_id; // RPC style
-    if (obj.newPatientId) return obj.newPatientId;
-    if (Array.isArray(obj)) return getNewPatientId(obj[0]);
-    return undefined;
-  };
-
-  // Build payloads (so both modal + submit can use the same derived data)
   const findings = useMemo(
     () => ({
       upper: normalize16(assembledFindings?.upper),
@@ -341,17 +252,15 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
 
   const visitPayload = useMemo(
     () => ({
-      chiefComplaint: (dentalExam.chiefComplaint || "").trim(),
-      durationOnset: (dentalExam.durationOnset || "").trim(),
-      triggerFactors: Array.isArray(dentalExam.triggerFactors)
-        ? dentalExam.triggerFactors
-        : [],
-      diagnosisNotes: (dentalExam.diagnosisNotes || "").trim(),
-      treatmentPlanNotes: (dentalExam.treatmentPlanNotes || "").trim(),
+      chiefComplaint: (examData.chiefComplaint || "").trim(),
+      durationOnset: (examData.durationOnset || "").trim(),
+      triggerFactors: Array.isArray(examData.triggerFactors) ? examData.triggerFactors : [],
+      diagnosisNotes: (examData.diagnosisNotes || "").trim(),
+      treatmentPlanNotes: (examData.treatmentPlanNotes || "").trim(),
       findings,
       ...(cleanRows.length ? { procedures: cleanRows } : {}),
     }),
-    [dentalExam, findings, cleanRows]
+    [examData, findings, cleanRows]
   );
 
   const mhPayload = useMemo(
@@ -372,9 +281,78 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
     [mh]
   );
 
-  // Open modal (with validation)
+  // ---- Problem chips (for display) ---------------------------------------
+  const probs = mh.problems || {};
+  const PROBLEM_LABELS = {
+    artificialValvesPacemaker: "Artificial Valves/Pacemakers",
+    asthma: "Asthma",
+    allergy: "Allergy",
+    bleedingTendency: "Bleeding Tendency",
+    epilepsySeizure: "Epilepsy/Seizure",
+    heartDisease: "Heart Disease",
+    hypHypertension: "Hypertension/Hypotension",
+    hormoneDisorder: "Hormone Disorder",
+    jaundiceLiver: "Jaundice/Liver Disease",
+    stomachUlcer: "Stomach Ulcer",
+    lowHighPressure: "Low/High Pressure",
+    arthritisJoint: "Arthritis/Joint Problem",
+    kidneyProblems: "Kidney Problems",
+    thyroidProblems: "Thyroid Problems",
+  };
+
+  const problemChips = Object.entries(PROBLEM_LABELS)
+    .filter(([k]) => probs[k])
+    .map(([key, label]) => (
+      <span key={key} className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+        {label}
+      </span>
+    ));
+  if (probs.otherProblem) {
+    problemChips.push(
+      <span key="other" className="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+        Other: {probs.otherProblemText || "Not specified"}
+      </span>
+    );
+  }
+
+  // Outstanding due?
+  const hasDue =
+    Number(procs?.summary?.due || 0) > 0 ||
+    (Array.isArray(procedureRows) && procedureRows.some((r) => Number(r?.due || 0) > 0));
+
+  // ---- Submit state -------------------------------------------------------
+  const [submitting, setSubmitting] = useState(false);
+  const [submitStep, setSubmitStep] = useState("");
+  const [submitError, setSubmitError] = useState("");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // Build a File from available sources (legacy path)
+  const getPhotoFileFromProfile = () => {
+    const pf = formData?._photoFile || profile?._photoFile;
+    if (pf) return pf;
+    if (profile.photoPreview?.startsWith("data:image/")) {
+      const name = safeName(profile.firstName, profile.lastName) || "patient";
+      return dataUrlToFile(profile.photoPreview, `${name}-photo`);
+    }
+    return null;
+  };
+
+  // Prefer IK URL from either `photoIK` (new) or `photo` (alt)
+  const getPhotoUrlFromProfile = () => {
+    // New flow from PatientProfileForm
+    const ikFromPhotoIK = getImageKitUrl(profile.photoIK);
+    if (ikFromPhotoIK) return ikFromPhotoIK;
+    // Alternate shape if a generic "photo" is present
+    const ikFromPhoto = getImageKitUrl(profile.photo);
+    if (ikFromPhoto) return ikFromPhoto;
+    // If a plain URL was kept
+    if (profile.photoUrl) return profile.photoUrl;
+    return null;
+  };
+
+  // Open confirm modal with a minimal validation
   const openConfirm = () => {
-    if (!dentalExam.chiefComplaint || !dentalExam.chiefComplaint.trim()) {
+    if (!examData.chiefComplaint || !examData.chiefComplaint.trim()) {
       setSubmitError("Chief complaint is required for the initial visit.");
       onEdit?.(3);
       return;
@@ -383,7 +361,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
     setConfirmOpen(true);
   };
 
-  // Actual submit (called from modal)
+  // ---- Submit -------------------------------------------------------------
   const doSubmit = async () => {
     setSubmitting(true);
     setSubmitError("");
@@ -391,9 +369,16 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
 
     try {
       let patientId = formData.patientId || profile.id || null;
+      const photoFile = getPhotoFileFromProfile();
+      const directPhotoUrl = getPhotoUrlFromProfile(); // ← prefer ImageKit URL if present
+
+      const visitPayloadLocal = { ...visitPayload };
+      const mhPayloadLocal = { ...mhPayload };
 
       if (!patientId) {
+        // New patient path
         setSubmitStep("Creating patient, medical history & initial visit…");
+
         const patientPayload = {
           firstName: profile.firstName?.trim(),
           lastName: profile.lastName?.trim(),
@@ -412,19 +397,37 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
             relation: profile.emergencyContact?.relation || "",
             phone: profile.emergencyContact?.phone || "",
           },
-          medicalHistory: mhPayload,
-          initialVisit: visitPayload,
+          medicalHistory: mhPayloadLocal,
+          initialVisit: visitPayloadLocal,
         };
 
         const created = await createPatient(patientPayload);
-        patientId =
-          getNewPatientId(created) ||
-          created?.id ||
-          created?.data?.id;
-
+        patientId = getNewPatientId(created) || created?.id || created?.data?.id;
         if (!patientId) {
           console.error("createPatient response:", created);
           throw new Error("Could not determine new patient ID");
+        }
+
+        // ---- Photo handling (ImageKit only)
+        if (directPhotoUrl) {
+          setSubmitStep("Saving photo URL…");
+          await updatePatientPhotoUrl(patientId, directPhotoUrl);
+          // eslint-disable-next-line no-console
+          console.log("🖼️ Saved patient photo URL (direct):", directPhotoUrl, { patientId });
+        } else if (photoFile) {
+          setSubmitStep("Uploading photo to ImageKit…");
+          const name = safeName(profile.firstName, profile.lastName) || "patient";
+          const { url } = await uploadPatientPhoto(patientId, photoFile, {
+            folder: "/patients", // ← match front-end foldering
+            fileName: `${name}-photo`,
+          });
+          if (url) {
+            await updatePatientPhotoUrl(patientId, url);
+            // eslint-disable-next-line no-console
+            console.log("🖼️ Saved patient photo URL (uploaded):", url, { patientId });
+          } else {
+            console.warn("ImageKit upload returned no URL", { patientId });
+          }
         }
 
         setSubmitStep("Finalizing…");
@@ -432,6 +435,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
           patientId,
           visit: { id: created?.visit_id || created?.new_visit_id || null },
         });
+
         setSubmitStep("All done!");
         setSubmitting(false);
         setConfirmOpen(false);
@@ -440,10 +444,32 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
 
       // Existing patient path
       setSubmitStep("Saving medical history…");
-      await upsertMedicalHistory(patientId, mhPayload);
+      await upsertMedicalHistory(patientId, mhPayloadLocal);
 
       setSubmitStep("Saving dental exam & procedures…");
-      const savedVisit = await createVisit(patientId, visitPayload);
+      const savedVisit = await createVisit(patientId, visitPayloadLocal);
+
+      // ---- Photo handling (ImageKit only)
+      if (directPhotoUrl) {
+        setSubmitStep("Saving photo URL…");
+        await updatePatientPhotoUrl(patientId, directPhotoUrl);
+        // eslint-disable-next-line no-console
+        console.log("🖼️ Saved patient photo URL (direct):", directPhotoUrl, { patientId });
+      } else if (photoFile) {
+        setSubmitStep("Uploading photo to ImageKit…");
+        const name = safeName(profile.firstName, profile.lastName) || "patient";
+        const { url } = await uploadPatientPhoto(patientId, photoFile, {
+          folder: "/patients", // ← match front-end foldering
+          fileName: `${name}-photo`,
+        });
+        if (url) {
+          await updatePatientPhotoUrl(patientId, url);
+          // eslint-disable-next-line no-console
+          console.log("🖼️ Saved patient photo URL (uploaded):", url, { patientId });
+        } else {
+          console.warn("ImageKit upload returned no URL", { patientId });
+        }
+      }
 
       setSubmitStep("Finalizing…");
       onSubmit?.({
@@ -457,9 +483,9 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
       setConfirmOpen(false);
     } catch (err) {
       setSubmitError(err?.message || "Failed to submit record");
+      console.error("Submit error:", err);
       setSubmitting(false);
       setSubmitStep("");
-      // keep modal open so user can retry or cancel
     }
   };
 
@@ -467,18 +493,18 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
     if (typeof window !== "undefined") window.print();
   };
 
-  const exportJSON = () => {
-    try {
-      const data = JSON.stringify(formData || {}, null, 2);
-      const blob = new Blob([data], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "patient-record.json";
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {}
-  };
+  /* -----------------------------------------------------------------------
+     UI
+  -----------------------------------------------------------------------*/
+  const hasProcedures = Array.isArray(procedureRows) && procedureRows.length > 0;
+
+  // Choose best display URL for the photo (no UI change)
+  const displayPhotoUrl =
+    getImageKitUrl(profile.photoIK) ||
+    getImageKitUrl(profile.photo) ||
+    profile.photoUrl || // expect this to already be an IK URL if set
+    profile.photoPreview ||
+    null;
 
   return (
     <div className="max-w-5xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -496,19 +522,9 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-2xl font-semibold text-gray-800">Review & Submit</h2>
-            <p className="mt-1 text-sm text-gray-500">
-              Please review all information before final submission
-            </p>
+            <p className="mt-1 text-sm text-gray-500">Please review all information before final submission</p>
           </div>
           <div className="no-print flex gap-2">
-            <button
-              type="button"
-              onClick={exportJSON}
-              className="rounded-md border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
-              title="Export JSON"
-            >
-              Export JSON
-            </button>
             <button
               type="button"
               onClick={printPage}
@@ -520,65 +536,12 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
           </div>
         </div>
 
-        {/* Issues banner */}
-        {issues.length > 0 && (
-          <div className="no-print mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
-            <div className="flex items-start gap-2">
-              <svg
-                className="w-5 h-5 text-amber-600 mt-0.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 9v3m0 4h.01M10.29 3.86l-7.4 12.84A1 1 0 003.72 18h16.56a1 1 0 00.86-1.5L13.74 3.86a1 1 0 00-1.73 0z"
-                />
-              </svg>
-              <div className="flex-1">
-                <p className="text-sm font-medium text-amber-800">
-                  {issues.length} item{issues.length > 1 ? "s" : ""} need your
-                  attention
-                </p>
-                <ul className="mt-2 space-y-1">
-                  {issues.map((it, i) => (
-                    <li key={i} className="text-sm text-amber-800 flex items-center justify-between">
-                      <span>
-                        <span className="font-medium">{it.section}:</span>{" "}
-                        {it.msg}
-                      </span>
-                      <span className="flex items-center gap-2">
-                        <a
-                          href={it.anchor}
-                          className="text-amber-800/70 hover:underline hidden sm:inline"
-                        >
-                          Jump
-                        </a>
-                        <button
-                          type="button"
-                          onClick={() => onEdit?.(it.idx)}
-                          className="rounded-md border border-amber-300 px-2 py-1 text-xs hover:bg-amber-100"
-                        >
-                          Fix
-                        </button>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* Submit progress / errors */}
         {submitting && (
           <div className="no-print mt-4 rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800 flex items-center gap-2">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v2A6 6 0 004 12H2z"/>
+            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v2A6 6 0 004 12H2z" />
             </svg>
             <span>{submitStep || "Submitting…"}</span>
           </div>
@@ -608,12 +571,8 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
             {/* Photo */}
             <div className="w-32">
               <div className="h-32 w-32 overflow-hidden rounded-lg border border-gray-200 bg-gray-50">
-                {profile.photoPreview ? (
-                  <img
-                    src={profile.photoPreview}
-                    alt="Patient"
-                    className="h-full w-full object-cover"
-                  />
+                {displayPhotoUrl ? (
+                  <img src={displayPhotoUrl} alt="Patient" className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-xs text-gray-400">
                     No Photo
@@ -627,8 +586,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
               <div>
                 <p className="text-sm text-gray-500">Full Name</p>
                 <p className="font-medium">
-                  {(profile.firstName || "Not specified")}{" "}
-                  {profile.lastName || ""}
+                  {(profile.firstName || "Not specified") + " " + (profile.lastName || "")}
                 </p>
               </div>
               <div>
@@ -637,15 +595,11 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
               </div>
               <div>
                 <p className="text-sm text-gray-500">Age</p>
-                <p className="font-medium">
-                  {ageText ? `${ageText} years` : "Not specified"}
-                </p>
+                <p className="font-medium">{ageText ? `${ageText} years` : "Not specified"}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Gender</p>
-                <p className="font-medium">
-                  {profile.gender || "Not specified"}
-                </p>
+                <p className="font-medium">{profile.gender || "Not specified"}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Contact</p>
@@ -661,27 +615,17 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
                   {profile.pincode ? ` - ${profile.pincode}` : ""}
                 </p>
               </div>
-
-              {/* Emergency Contact */}
               <div className="md:col-span-2 mt-2">
                 <p className="text-sm text-gray-500">Emergency Contact</p>
                 <p className="font-medium">
                   {profile.emergencyContact?.name || "Not specified"}
-                  {profile.emergencyContact?.relation
-                    ? ` (${profile.emergencyContact.relation})`
-                    : ""}
-                  {profile.emergencyContact?.phone
-                    ? ` — ${profile.emergencyContact.phone}`
-                    : ""}
+                  {profile.emergencyContact?.relation ? ` (${profile.emergencyContact.relation})` : ""}
+                  {profile.emergencyContact?.phone ? ` — ${profile.emergencyContact.phone}` : ""}
                 </p>
               </div>
-
-              {/* Occupation */}
               <div className="md:col-span-2">
                 <p className="text-sm text-gray-500">Occupation</p>
-                <p className="font-medium">
-                  {profile.occupation || "Not specified"}
-                </p>
+                <p className="font-medium">{profile.occupation || "Not specified"}</p>
               </div>
             </div>
           </div>
@@ -701,56 +645,36 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Surgery / Hospitalization */}
             <div>
-              <p className="text-sm text-gray-500">
-                Surgery/Hospitalization (last 5 years)
-              </p>
+              <p className="text-sm text-gray-500">Surgery/Hospitalization (last 5 years)</p>
               <p className="font-medium">
                 {mh.surgeryOrHospitalized || "Not specified"}
-                {mh.surgeryOrHospitalized === "Yes" && mh.surgeryDetails
-                  ? ` — ${mh.surgeryDetails}`
-                  : ""}
+                {mh.surgeryOrHospitalized === "Yes" && mh.surgeryDetails ? ` — ${mh.surgeryDetails}` : ""}
               </p>
             </div>
-
-            {/* Fever/Cold/Cough */}
             <div>
               <p className="text-sm text-gray-500">Current Fever/Cold/Cough</p>
               <p className="font-medium">
                 {mh.feverColdCough || "Not specified"}
-                {mh.feverColdCough === "Yes" && mh.feverDetails
-                  ? ` — ${mh.feverDetails}`
-                  : ""}
+                {mh.feverColdCough === "Yes" && mh.feverDetails ? ` — ${mh.feverDetails}` : ""}
               </p>
             </div>
-
-            {/* Abnormal bleeding */}
             <div>
-              <p className="text-sm text-gray-500">
-                Abnormal Bleeding (injury/operation)
-              </p>
+              <p className="text-sm text-gray-500">Abnormal Bleeding (injury/operation)</p>
               <p className="font-medium">
                 {mh.abnormalBleedingHistory || "Not specified"}
-                {mh.abnormalBleedingHistory === "Yes" &&
-                mh.abnormalBleedingDetails
+                {mh.abnormalBleedingHistory === "Yes" && mh.abnormalBleedingDetails
                   ? ` — ${mh.abnormalBleedingDetails}`
                   : ""}
               </p>
             </div>
-
-            {/* Taking medicine */}
             <div>
               <p className="text-sm text-gray-500">Currently Taking Medicine</p>
               <p className="font-medium">
                 {mh.takingMedicine || "Not specified"}
-                {mh.takingMedicine === "Yes" && mh.medicineDetails
-                  ? ` — ${mh.medicineDetails}`
-                  : ""}
+                {mh.takingMedicine === "Yes" && mh.medicineDetails ? ` — ${mh.medicineDetails}` : ""}
               </p>
             </div>
-
-            {/* Medication allergy */}
             <div>
               <p className="text-sm text-gray-500">Medication Allergy</p>
               <p className="font-medium">
@@ -760,16 +684,10 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
                   : ""}
               </p>
             </div>
-
-            {/* Past dental history */}
             <div className="md:col-span-2">
               <p className="text-sm text-gray-500">Past Dental History</p>
-              <p className="font-medium">
-                {mh.pastDentalHistory || "Not specified"}
-              </p>
+              <p className="font-medium">{mh.pastDentalHistory || "Not specified"}</p>
             </div>
-
-            {/* Problems */}
             <div className="md:col-span-2">
               <p className="text-sm text-gray-500 mb-2">Medical Problems</p>
               <div className="flex flex-wrap gap-2">
@@ -800,28 +718,20 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <p className="text-sm text-gray-500">Chief Complaint</p>
-                <p className="font-medium">
-                  {dentalExam.chiefComplaint || "Not specified"}
-                </p>
+                <p className="font-medium">{examData.chiefComplaint || "Not specified"}</p>
               </div>
               <div>
                 <p className="text-sm text-gray-500">Duration & Onset</p>
-                <p className="font-medium">
-                  {dentalExam.durationOnset || "Not specified"}
-                </p>
+                <p className="font-medium">{examData.durationOnset || "Not specified"}</p>
               </div>
             </div>
 
             <div>
               <p className="text-sm text-gray-500">Trigger Factors</p>
               <div className="flex flex-wrap gap-2 mt-1">
-                {Array.isArray(dentalExam.triggerFactors) &&
-                dentalExam.triggerFactors.length ? (
-                  dentalExam.triggerFactors.map((factor, i) => (
-                    <span
-                      key={i}
-                      className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full"
-                    >
+                {Array.isArray(examData.triggerFactors) && examData.triggerFactors.length ? (
+                  examData.triggerFactors.map((factor, i) => (
+                    <span key={i} className="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
                       {factor}
                     </span>
                   ))
@@ -831,7 +741,6 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
               </div>
             </div>
 
-            {/* Tooth Findings */}
             <div>
               <p className="text-sm text-gray-500">Dental Findings</p>
               {renderToothFindings(assembledFindings?.upper || [], "Upper")}
@@ -840,16 +749,12 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
 
             <div>
               <p className="text-sm text-gray-500">Diagnosis Notes</p>
-              <p className="font-medium">
-                {dentalExam.diagnosisNotes || "No diagnosis notes"}
-              </p>
+              <p className="font-medium">{examData.diagnosisNotes || "No diagnosis notes"}</p>
             </div>
 
             <div>
               <p className="text-sm text-gray-500">Treatment Plan Notes</p>
-              <p className="font-medium">
-                {dentalExam.treatmentPlanNotes || "No treatment plan notes"}
-              </p>
+              <p className="font-medium">{examData.treatmentPlanNotes || "No treatment plan notes"}</p>
             </div>
           </div>
         </section>
@@ -857,9 +762,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
         {/* Procedures & Payments */}
         <section id="procedures" className="section">
           <div className="flex justify-between items-center mb-5">
-            <h3 className="text-lg font-medium text-gray-800">
-              Procedures & Payments
-            </h3>
+            <h3 className="text-lg font-medium text-gray-800">Procedures & Payments</h3>
             <button
               type="button"
               onClick={() => onEdit?.(4)}
@@ -869,7 +772,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
             </button>
           </div>
 
-          {Array.isArray(procedureRows) && procedureRows.length ? (
+          {hasProcedures ? (
             <div className="overflow-x-auto border rounded-lg">
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
@@ -900,9 +803,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {formatDate(r.visitDate)}
                       </td>
-                      <td className="px-4 py-3 text-sm text-gray-900">
-                        {r.procedure || "Not specified"}
-                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-900">{r.procedure || "Not specified"}</td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                         {formatDate(r.nextApptDate)}
                       </td>
@@ -913,13 +814,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
                         {formatCurrency(r.paid)}
                       </td>
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-right">
-                        <span
-                          className={`${
-                            Number(r.due || 0) > 0
-                              ? "text-red-600"
-                              : "text-green-600"
-                          }`}
-                        >
+                        <span className={`${Number(r.due || 0) > 0 ? "text-red-600" : "text-green-600"}`}>
                           {formatCurrency(r.due)}
                         </span>
                       </td>
@@ -943,9 +838,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
                     <th className="px-4 py-3 text-right text-sm font-semibold">
                       <span
                         className={`${
-                          Number(procs.summary?.due || 0) > 0
-                            ? "text-red-700"
-                            : "text-green-700"
+                          Number(procs.summary?.due || 0) > 0 ? "text-red-700" : "text-green-700"
                         }`}
                       >
                         {formatCurrency(procs.summary?.due)}
@@ -961,8 +854,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
 
           {hasDue && (
             <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-              There is an outstanding balance. You can still submit and update
-              payments later.
+              There is an outstanding balance. You can still submit and update payments later.
             </div>
           )}
         </section>
@@ -1002,7 +894,6 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
             <h3 id="confirm-title" className="text-lg font-semibold text-gray-800">
               Confirm submission
             </h3>
-
             <p className="mt-2 text-sm text-gray-600">
               Please confirm you want to submit this patient record. You can edit it later.
             </p>
@@ -1026,9 +917,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Chief Complaint</span>
-                <span className="font-medium">
-                  {dentalExam.chiefComplaint || "—"}
-                </span>
+                <span className="font-medium">{examData.chiefComplaint || "—"}</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Procedures</span>
@@ -1042,11 +931,17 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Paid</span>
-                <span className="font-semibold text-green-700">{formatCurrency(procs.summary?.paid)}</span>
+                <span className="font-semibold text-green-700">
+                  {formatCurrency(procs.summary?.paid)}
+                </span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Due</span>
-                <span className={`font-semibold ${Number(procs.summary?.due || 0) > 0 ? "text-red-700" : "text-green-700"}`}>
+                <span
+                  className={`font-semibold ${
+                    Number(procs.summary?.due || 0) > 0 ? "text-red-700" : "text-green-700"
+                  }`}
+                >
                   {formatCurrency(procs.summary?.due)}
                 </span>
               </div>
@@ -1077,9 +972,20 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
               >
                 {submitting ? (
                   <span className="inline-flex items-center gap-2">
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v2A6 6 0 004 12H2z"/>
+                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle
+                        className="opacity-25"
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="4"
+                      />
+                      <path
+                        className="opacity-75"
+                        fill="currentColor"
+                        d="M4 12a8 8 0 018-8v2A6 6 0 004 12H2z"
+                      />
                     </svg>
                     Submitting…
                   </span>

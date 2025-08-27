@@ -1,13 +1,15 @@
-
+// controllers/medicalHistoryController.js
+require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
-// Create an anon client bound to THIS request's JWT
+/* ---------- Supabase client bound to THIS request's JWT ---------- */
 const supabaseForReq = (req) =>
   createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: req.headers.authorization } },
+    auth: { persistSession: false },
   });
 
-// ------- helpers ----------
+/* ---------- helpers ---------- */
 const yn = (v) => {
   if (v === '' || v === undefined || v === null) return '';
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
@@ -57,6 +59,9 @@ const mapBodyToRow = (body = {}) => {
     other_problem_text: problems.otherProblemText,
   };
 
+  // If "other_problem" is false, clear any stale text
+  if (!row.other_problem) row.other_problem_text = null;
+
   // drop undefined so we don't overwrite with null unintentionally
   Object.keys(row).forEach((k) => row[k] === undefined && delete row[k]);
   return row;
@@ -65,22 +70,33 @@ const mapBodyToRow = (body = {}) => {
 const sbError = (res, error, status = 400) =>
   res.status(status).json({ error: error?.message || String(error) });
 
-// ------- controllers ----------
+/* ---------- controllers ---------- */
 
 // Upsert (one per patient)
 const upsertMedicalHistory = async (req, res) => {
   try {
+    if (!req.headers.authorization) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     const supabase = supabaseForReq(req);
     const { patientId } = req.params;
-    const userId = req.user?.id;
+
+    // Prefer req.user (from your requireUser middleware); fallback to Supabase auth
+    let userId = req.user?.id || null;
+    if (!userId) {
+      const { data: uData, error: uErr } = await supabase.auth.getUser();
+      if (uErr) return sbError(res, uErr, 401);
+      userId = uData?.user?.id || null;
+    }
     if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
-    // 1) Ensure the patient exists and is visible under RLS (owned by this user)
+    // 1) Ensure the patient exists & is visible under RLS (owned by this user)
     const { data: patient, error: pErr } = await supabase
       .from('patients')
       .select('id')
       .eq('id', patientId)
       .single();
+
     if (pErr?.code === 'PGRST116' || (!patient && !pErr)) {
       return res.status(404).json({ error: 'Patient not found' });
     }
@@ -119,6 +135,9 @@ const upsertMedicalHistory = async (req, res) => {
 
 const getMedicalHistory = async (req, res) => {
   try {
+    if (!req.headers.authorization) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
     const supabase = supabaseForReq(req);
     const { patientId } = req.params;
 

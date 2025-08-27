@@ -49,9 +49,9 @@ const Navbar = () => {
           </div>
             <div className="">
               <Link to="/" className="ml-2 text-lg font-bold text-gray-900">
-              Gugan
-            </Link> <br/>
-            <span className="text-sm"> DentalCare</span>
+              DentalCare
+            </Link> 
+            
             </div>
           </motion.div>
 

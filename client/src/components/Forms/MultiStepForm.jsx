@@ -1,3 +1,4 @@
+// src/components/MultiStepForm.jsx
 import React, {
   useEffect,
   useMemo,
@@ -11,34 +12,16 @@ import ChiefComplaintExamForm from "./ChiefComplaintExamForm";
 import ProcedureTrackingForm from "./ProcedureTrackingForm";
 import ReviewSubmitPage from "./ReviewSubmitPage";
 
-
 const DRAFT_KEY = "dentalPatientFormDraft";
 const DRAFT_VERSION = 2;
 
 // prefixes used by children
 const CHILD_PREFIXES = [
-  "dental:patientProfile",        // exact: dental:patientProfile:draft
-  "dental:medicalHistory",        // dental:medicalHistory:<pid>:draft
-  "dental:chiefComplaintExam",    // dental:chiefComplaintExam:<pid>:draft
-  "dental:procedureTracking",     // dental:procedureTracking:<id>:draft
+  "dental:patientProfile", // exact: dental:patientProfile:draft
+  "dental:medicalHistory", // dental:medicalHistory:<pid>:draft
+  "dental:chiefComplaintExam", // dental:chiefComplaintExam:<pid>:draft
+  "dental:procedureTracking", // dental:procedureTracking:<pid>:draft
 ];
-
-/** @typedef {Object} FormDataShape
- *  @property {string|null} patientId
- *  @property {Record<string, any>} patientProfile
- *  @property {Record<string, any>} medicalHistory
- *  @property {Record<string, any>} dentalExam
- *  @property {Record<string, any>} procedures
- */
-
-/** @type {FormDataShape} */
-const INITIAL_DATA = {
-  patientId: null,
-  patientProfile: {},
-  medicalHistory: {},
-  dentalExam: {},
-  procedures: {},
-};
 
 const isBrowser = () =>
   typeof window !== "undefined" && typeof localStorage !== "undefined";
@@ -74,7 +57,10 @@ const storage = {
   writeDraft(obj) {
     if (!isBrowser()) return;
     try {
-      const payload = JSON.stringify({ v: DRAFT_VERSION, ...obj }, jsonReplacer);
+      const payload = JSON.stringify(
+        { v: DRAFT_VERSION, ...obj },
+        jsonReplacer
+      );
       localStorage.setItem(DRAFT_KEY, payload);
     } catch {}
   },
@@ -89,7 +75,7 @@ const storage = {
         if (
           key === "dental:patientProfile:draft" ||
           CHILD_PREFIXES.some((p) => key.startsWith(`${p}:`)) ||
-          CHILD_PREFIXES.some((p) => key.startsWith(`${p}`)) // safety
+          CHILD_PREFIXES.some((p) => key.startsWith(`${p}`))
         ) {
           localStorage.removeItem(key);
         }
@@ -98,10 +84,32 @@ const storage = {
   },
 };
 
+// ---- helpers to migrate per-patient localStorage drafts ----
+const migrateSectionDraft = (sectionPrefix, fromId, toId) => {
+  if (!isBrowser() || !toId) return;
+  const oldKey = `${sectionPrefix}:${fromId}:draft`;
+  const newKey = `${sectionPrefix}:${toId}:draft`;
+  try {
+    const oldVal = localStorage.getItem(oldKey);
+    const hasNew = localStorage.getItem(newKey);
+    if (oldVal && !hasNew) {
+      localStorage.setItem(newKey, oldVal);
+      localStorage.removeItem(oldKey);
+    }
+  } catch {}
+};
+
+const migratePerPatientDrafts = (toPatientId) => {
+  if (!toPatientId) return;
+  migrateSectionDraft("dental:medicalHistory", "new", toPatientId);
+  migrateSectionDraft("dental:chiefComplaintExam", "new", toPatientId);
+  migrateSectionDraft("dental:procedureTracking", "new", toPatientId);
+};
+
 // Debounce helper that stays stable across renders
 function useDebouncedFn(fn, delay) {
   const fnRef = useRef(fn);
-  const tRef = useRef(/** @type {any} */ (null));
+  const tRef = useRef(null);
   useEffect(() => {
     fnRef.current = fn;
   }, [fn]);
@@ -114,11 +122,26 @@ function useDebouncedFn(fn, delay) {
   );
 }
 
+/** @typedef {Object} FormDataShape
+ *  @property {string|null} patientId
+ *  @property {Record<string, any>} patientProfile
+ *  @property {Record<string, any>} medicalHistory
+ *  @property {Record<string, any>} dentalExam
+ *  @property {Record<string, any>} procedures
+ */
+const INITIAL_DATA = {
+  patientId: null,
+  patientProfile: {},
+  medicalHistory: {},
+  dentalExam: {},
+  procedures: {},
+};
+
 const MultiStepForm = () => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState(INITIAL_DATA);
-  const [restoredAt, setRestoredAt] = useState/** @type {string|null} */(null);
-  const [savedAt, setSavedAt] = useState/** @type {string|null} */(null);
+  const [restoredAt, setRestoredAt] = useState(null);
+  const [savedAt, setSavedAt] = useState(null);
 
   // ---- Load any saved draft on mount ----
   useEffect(() => {
@@ -168,7 +191,10 @@ const MultiStepForm = () => {
           typeof deltaOrUpdater === "function"
             ? deltaOrUpdater(prev, currentStep)
             : { data: { ...prev, ...deltaOrUpdater }, step: currentStep };
-        const clampedStep = Math.min(Math.max(nextStepVal ?? currentStep, 1), 5);
+        const clampedStep = Math.min(
+          Math.max(nextStepVal ?? currentStep, 1),
+          5
+        );
         setStep(clampedStep);
         persist(nextData, clampedStep);
         return nextData;
@@ -229,7 +255,6 @@ const MultiStepForm = () => {
         result?.patientId ? `\nPatient ID: ${result.patientId}` : ""
       }`
     );
-    // Keep patientId if you want, but clear sections
     setFormData({ ...INITIAL_DATA, patientId: result?.patientId || null });
     setStep(1);
     setRestoredAt(null);
@@ -266,19 +291,15 @@ const MultiStepForm = () => {
   );
 
   useEffect(() => {
-  // scroll to top smoothly whenever step changes
-  if (typeof window !== "undefined") {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-}, [step]);
+    // scroll to top smoothly whenever step changes
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [step]);
 
   // Helper to safely extract ID from server result
   const extractId = (obj) =>
-    obj?.id ||
-    obj?.patient?.id ||
-    obj?.patient_id ||
-    obj?.data?.id ||
-    null;
+    obj?.id || obj?.patient?.id || obj?.patient_id || obj?.data?.id || null;
 
   const renderStep = () => {
     switch (step) {
@@ -287,11 +308,13 @@ const MultiStepForm = () => {
           <PatientProfileForm
             initial={formData.patientProfile}
             onNext={(saved) => {
-              // saved is the server response from PatientProfileForm submit
+              // saved is the payload from PatientProfileForm (already using ImageKit URL)
               const pid = extractId(saved) || formData.patientId;
+              // --- NEW: migrate "new" per-patient drafts to this patientId
+              if (pid && isBrowser()) migratePerPatientDrafts(pid);
+
               nextStep({
                 patientId: pid || null,
-                // prefer server echo if it contains profile fields; else keep local
                 patientProfile: {
                   ...formData.patientProfile,
                   ...(saved || {}),
@@ -314,6 +337,7 @@ const MultiStepForm = () => {
       case 3:
         return (
           <ChiefComplaintExamForm
+            patientId={formData.patientId}
             initial={formData.dentalExam}
             onNext={(data) => nextStep({ dentalExam: data })}
             onBack={(data) => prevStep({ dentalExam: data })}
@@ -351,9 +375,13 @@ const MultiStepForm = () => {
             initial={formData.patientProfile}
             onNext={(saved) => {
               const pid = extractId(saved) || formData.patientId;
+              if (pid && isBrowser()) migratePerPatientDrafts(pid);
               nextStep({
                 patientId: pid || null,
-                patientProfile: { ...formData.patientProfile, ...(saved || {}) },
+                patientProfile: {
+                  ...formData.patientProfile,
+                  ...(saved || {}),
+                },
               });
             }}
             onSave={(payload) => saveDraft({ patientProfile: payload })}

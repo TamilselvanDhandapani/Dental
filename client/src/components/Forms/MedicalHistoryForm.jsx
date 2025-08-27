@@ -255,13 +255,12 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
     return () => clearTimeout(id);
   }, [payload, DRAFT_KEY]);
 
-  // --- Restore from localStorage on mount; merge with initial props ---
+  // --- Restore from localStorage; re-run when patientId (key) or initial change ---
   useEffect(() => {
     try {
       if (typeof window === "undefined") return;
       const raw = localStorage.getItem(DRAFT_KEY);
-      if (!raw) return;
-      const draft = JSON.parse(raw) || {};
+      const draft = raw ? JSON.parse(raw) : {};
 
       setSurgeryOrHospitalized(draft.surgeryOrHospitalized ?? initial.surgeryOrHospitalized ?? "");
       setSurgeryDetails(draft.surgeryDetails ?? initial.surgeryDetails ?? "");
@@ -302,8 +301,13 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
       );
       setPastDentalHistory(draft.pastDentalHistory ?? initial.pastDentalHistory ?? "");
     } catch {}
+  }, [DRAFT_KEY, initial]);
+
+  // Keep otherProblemText in sync if the toggle becomes false from any source
+  useEffect(() => {
+    if (!otherProblem && otherProblemText) setOtherProblemText("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [otherProblem]);
 
   // ---- Handlers ----
   const handleSaveDraft = () => onSave?.(payload);
@@ -333,8 +337,8 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
 
     setSaving(true);
     try {
-      onSave?.(payload);             // lets parent persist draft UI/time if desired
-      onNext?.(payload, payload);    // move forward with complete data
+      onSave?.(payload);          // lets parent persist draft UI/time if desired
+      onNext?.(payload, payload); // move forward with complete data
     } catch (err) {
       setSubmitError(err?.message || "Failed to continue");
     } finally {

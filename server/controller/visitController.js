@@ -7,7 +7,8 @@ const supabaseForReq = (req) =>
     global: { headers: { Authorization: req.headers.authorization } },
   });
 
-// ---------- helpers ----------
+/* -------------------------------- helpers -------------------------------- */
+
 const toIso = (v) => {
   if (!v) return undefined;
   const d = new Date(v);
@@ -41,25 +42,21 @@ const mapVisitBodyToRow = (body = {}, { forUpdate = false } = {}) => {
 const sbError = (res, error, status = 400) =>
   res.status(status).json({ error: error?.message || error?.details || String(error) });
 
-/**
- * Extract earliest upcoming nextApptDate from a visit's procedures array.
- * Returns Date object or null.
- */
+/** Extract earliest upcoming nextApptDate from a visit's procedures array. Returns Date or null. */
 const getEarliestNextApptFromProcedures = (procedures) => {
   if (!Array.isArray(procedures)) return null;
   const today = new Date(new Date().toDateString()); // midnight today
   const dates = procedures
-    .map(p => p?.nextApptDate)
+    .map((p) => p?.nextApptDate || p?.next_appt_date)
     .filter(Boolean)
-    .map(d => new Date(d + (String(d).length === 10 ? 'T00:00:00Z' : '')))
-    .filter(dt => !Number.isNaN(dt.getTime()) && dt >= today);
+    .map((d) => new Date(String(d).length === 10 ? `${d}T00:00:00Z` : d))
+    .filter((dt) => !Number.isNaN(dt.getTime()) && dt >= today);
   if (dates.length === 0) return null;
   dates.sort((a, b) => a - b);
   return dates[0];
 };
 
 const normalizeToDate = (d) => {
-  // Accept "YYYY-MM-DD" or full ISO strings
   if (!d) return null;
   const s = String(d);
   const iso = s.length === 10 ? `${s}T00:00:00Z` : s;
@@ -67,9 +64,7 @@ const normalizeToDate = (d) => {
   return Number.isNaN(dt.getTime()) ? null : dt;
 };
 
-/**
- * Get patient name (first_name + last_name) with a tiny in-memory cache for batch lookups.
- */
+/** Get patient name (first_name + last_name) with a tiny in-memory cache for batch lookups. */
 const getPatientName = async (supabase, patientId, cache) => {
   if (!patientId) return null;
   if (cache && cache.has(patientId)) return cache.get(patientId);
@@ -88,7 +83,57 @@ const getPatientName = async (supabase, patientId, cache) => {
   return val;
 };
 
-// ---------- controllers ----------
+/* -------------------------- procedure helpers ---------------------------- */
+
+const clampNum = (v, def = 0) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
+};
+
+const cleanDate = (d) => {
+  if (!d) return undefined;
+  const s = String(d);
+  const iso = s.length === 10 ? `${s}T00:00:00Z` : s;
+  const dt = new Date(iso);
+  if (Number.isNaN(dt.getTime())) return undefined;
+  // keep original simple date if provided as YYYY-MM-DD to match your UI output
+  return s.length === 10 ? s : iso;
+};
+
+const sanitizeProcedure = (p = {}) => {
+  const visitD = p.visitDate ?? p.visit_date;
+  const nextD  = p.nextApptDate ?? p.next_appt_date;
+
+  const out = {
+    // free text
+    procedure: p.procedure ?? "",
+    notes: p.notes ?? "",
+    // dates (stored as strings inside JSON)
+    visitDate: cleanDate(visitD) ?? null,
+    nextApptDate: cleanDate(nextD) ?? null,
+    // numbers (DB trigger will re-normalize anyway)
+    total: clampNum(p.total, 0),
+    paid: clampNum(p.paid, 0),
+  };
+
+  // also mirror snake_case for legacy readers
+  out.visit_date = out.visitDate;
+  out.next_appt_date = out.nextApptDate;
+  return out;
+};
+
+const readVisitForProcedures = async (supabase, visitId) => {
+  const { data: v, error } = await supabase
+    .from('visits')
+    .select('id, procedures')
+    .eq('id', visitId)
+    .single();
+  if (error?.code === 'PGRST116' || (!v && !error)) return { notFound: true };
+  if (error) return { error };
+  return { visit: v };
+};
+
+/* ------------------------------- controllers ----------------------------- */
 
 // Create a new Visit
 const createVisit = async (req, res) => {
@@ -244,7 +289,7 @@ const getNextApptForVisit = async (req, res) => {
     const supabase = supabaseForReq(req);
     const { visitId } = req.params;
 
-    // Try embedding patient (requires FK in schema cache). If not present, we'll fallback.
+    // Try embedding patient (requires FK in schema cache). If not present, fallback.
     const { data: v, error } = await supabase
       .from('visits')
       .select('id, patient_id, chief_complaint, visit_at, procedures, patients ( first_name, last_name )')
@@ -308,9 +353,9 @@ const getNextApptsForVisit = async (req, res) => {
     const rows = [];
     if (Array.isArray(v.procedures)) {
       for (const p of v.procedures) {
-        const d = p?.nextApptDate;
+        const d = p?.nextApptDate || p?.next_appt_date;
         if (!d) continue;
-        const dt = new Date(d + (String(d).length === 10 ? 'T00:00:00Z' : ''));
+        const dt = new Date(String(d).length === 10 ? `${d}T00:00:00Z` : d);
         if (Number.isNaN(dt.getTime()) || dt < today) continue;
 
         rows.push({
@@ -371,7 +416,7 @@ const getOverallNextAppts = async (req, res) => {
       }
 
       for (const p of v.procedures) {
-        const dt = normalizeToDate(p?.nextApptDate);
+        const dt = normalizeToDate(p?.nextApptDate || p?.next_appt_date);
         if (!dt) continue;
         if (dt < today) continue;
 
@@ -397,8 +442,8 @@ const getOverallNextAppts = async (req, res) => {
     const paged = rows.slice(offset, offset + limit);
 
     if (paged.length === 0) {
-      // If there are absolutely no future appts at all, 404 is fine; otherwise return empty list.
-      return res.status(rows.length === 0 ? 404 : 200).json(ped);
+      // If there are absolutely no future appts at all, 404 is fine; otherwise return empty page.
+      return res.status(rows.length === 0 ? 404 : 200).json(paged);
     }
 
     return res.json(paged);
@@ -407,13 +452,130 @@ const getOverallNextAppts = async (req, res) => {
   }
 };
 
+/* ----------------------- procedures (index-based) ------------------------ */
+
+// POST /visits/:visitId/procedures
+const addVisitProcedure = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    const { visitId } = req.params;
+
+    const { visit, error, notFound } = await readVisitForProcedures(supabase, visitId);
+    if (error) return sbError(res, error);
+    if (notFound) return res.status(404).json({ error: 'Visit not found' });
+
+    const procs = Array.isArray(visit.procedures) ? [...visit.procedures] : [];
+    // append at END to keep prior indices stable
+    procs.push(sanitizeProcedure(req.body || {}));
+
+    const { data: updated, error: uErr } = await supabase
+      .from('visits')
+      .update({ procedures: procs })
+      .eq('id', visitId)
+      .select('*')
+      .single();
+
+    if (uErr) return sbError(res, uErr);
+    return res.json(updated);
+  } catch (err) {
+    return sbError(res, err);
+  }
+};
+
+// PATCH /visits/:visitId/procedures/:index  (0-based)
+// (You may also map PUT to this same handler in your router.)
+const updateVisitProcedureByIndex = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    const { visitId, index } = req.params;
+    const idx = parseInt(index, 10);
+    if (!Number.isInteger(idx) || idx < 0) {
+      return res.status(400).json({ error: 'Invalid procedure index' });
+    }
+
+    const { visit, error, notFound } = await readVisitForProcedures(supabase, visitId);
+    if (error) return sbError(res, error);
+    if (notFound) return res.status(404).json({ error: 'Visit not found' });
+
+    const procs = Array.isArray(visit.procedures) ? [...visit.procedures] : [];
+    if (idx >= procs.length) {
+      return res.status(404).json({ error: 'Procedure index out of range' });
+    }
+
+    const patch = sanitizeProcedure(req.body || {});
+    const existing = procs[idx] || {};
+
+    procs[idx] = {
+      ...existing,
+      ...patch,
+      // keep mirrored snake_case for any legacy readers
+      visit_date: patch.visitDate ?? existing.visit_date ?? existing.visitDate ?? null,
+      next_appt_date: patch.nextApptDate ?? existing.next_appt_date ?? existing.nextApptDate ?? null,
+    };
+
+    const { data: updated, error: uErr } = await supabase
+      .from('visits')
+      .update({ procedures: procs })
+      .eq('id', visitId)
+      .select('*')
+      .single();
+
+    if (uErr) return sbError(res, uErr);
+    return res.json(updated);
+  } catch (err) {
+    return sbError(res, err);
+  }
+};
+
+// DELETE /visits/:visitId/procedures/:index  (0-based)
+const deleteVisitProcedureByIndex = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    const { visitId, index } = req.params;
+    const idx = parseInt(index, 10);
+    if (!Number.isInteger(idx) || idx < 0) {
+      return res.status(400).json({ error: 'Invalid procedure index' });
+    }
+
+    const { visit, error, notFound } = await readVisitForProcedures(supabase, visitId);
+    if (error) return sbError(res, error);
+    if (notFound) return res.status(404).json({ error: 'Visit not found' });
+
+    const procs = Array.isArray(visit.procedures) ? [...visit.procedures] : [];
+    if (idx >= procs.length) {
+      return res.status(404).json({ error: 'Procedure index out of range' });
+    }
+
+    procs.splice(idx, 1);
+
+    const { data: updated, error: uErr } = await supabase
+      .from('visits')
+      .update({ procedures: procs })
+      .eq('id', visitId)
+      .select('*')
+      .single();
+
+    if (uErr) return sbError(res, uErr);
+    return res.json(updated);
+  } catch (err) {
+    return sbError(res, err);
+  }
+};
+
+/* -------------------------------- exports -------------------------------- */
+
 module.exports = {
   createVisit,
   listVisitsByPatient,
   getVisit,
   updateVisit,
   deleteVisit,
-  getNextApptForVisit,    
-  getNextApptsForVisit,   
-  getOverallNextAppts,    
+  getNextApptForVisit,
+  getNextApptsForVisit,
+  getOverallNextAppts,
+
+  // procedures
+  addVisitProcedure,
+  updateVisitProcedureByIndex,
+  deleteVisitProcedureByIndex,
 };
