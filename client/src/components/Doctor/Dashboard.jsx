@@ -48,13 +48,13 @@ const Dashboard = () => {
       {/* Header */}
       <div className="mb-8 text-center">
         <h1 className="text-3xl font-bold text-gray-800">Dashboard</h1>
-        <p className="mt-2 text-gray-600">Welcome back! Here's what's happening today.</p>
+      
       </div>
 
      
 
       {/* Quick Actions */}
-      <h2 className="text-xl font-semibold text-gray-800 mb-4">Quick Actions</h2>
+      
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6 mb-8">
         {cards.map((card, index) => (
           <motion.div
