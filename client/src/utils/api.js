@@ -1,6 +1,3 @@
-// src/api.js — ImageKit-ready front-end API layer (Supabase storage removed)
-// - Keeps Supabase Auth for API calls (authedFetch)
-// - Replaces file upload helpers with ImageKit client upload via backend auth
 
 import { supabase } from "../CreateClient";
 
@@ -8,10 +5,7 @@ const API_BASE = "https://dentalserver-6uja.onrender.com/api";
 const DEFAULT_TIMEOUT_MS = 20000;
 
 /* ------------------------------ ImageKit envs ---------------------------- */
-// Required on the client:
-//  VITE_IK_URL_ENDPOINT=https://ik.imagekit.io/<your_ik_id>
-//  VITE_IK_PUBLIC_KEY=public_<...>
-//  VITE_IK_AUTH_ENDPOINT=/api/imagekit-auth
+
 const IK_URL_ENDPOINT =
   (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.VITE_IK_URL_ENDPOINT) ||
   (typeof process !== "undefined" && process.env && process.env.REACT_APP_IK_URL_ENDPOINT) ||

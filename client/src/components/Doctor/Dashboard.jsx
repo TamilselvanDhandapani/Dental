@@ -51,53 +51,7 @@ const Dashboard = () => {
         <p className="mt-2 text-gray-600">Welcome back! Here's what's happening today.</p>
       </div>
 
-      {/* Stats Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-blue-400 transition-all"
-        >
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-blue-100 mr-4">
-              <FaUserFriends className="text-blue-600 text-xl" />
-            </div>
-            <div>
-              <p className="text-gray-500 text-sm">Today's Appointments</p>
-              <p className="text-2xl font-bold text-gray-800">12</p>
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-teal-400 transition-all"
-        >
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-teal-100 mr-4">
-              <FaUserInjured className="text-teal-600 text-xl" />
-            </div>
-            <div>
-              <p className="text-gray-500 text-sm">New Patients</p>
-              <p className="text-2xl font-bold text-gray-800">3</p>
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div 
-          whileHover={{ y: -5 }}
-          className="bg-white p-6 rounded-xl shadow-sm border border-gray-200 hover:border-amber-400 transition-all"
-        >
-          <div className="flex items-center">
-            <div className="p-3 rounded-full bg-amber-100 mr-4">
-              <FaTooth className="text-amber-600 text-xl" />
-            </div>
-            <div>
-              <p className="text-gray-500 text-sm">Procedures Today</p>
-              <p className="text-2xl font-bold text-gray-800">7</p>
-            </div>
-          </div>
-        </motion.div>
-      </div>
+     
 
       {/* Quick Actions */}
       <h2 className="text-xl font-semibold text-gray-800 mb-4">Quick Actions</h2>
