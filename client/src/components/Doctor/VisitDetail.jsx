@@ -462,7 +462,7 @@ const VisitDetail = () => {
         {visit && (
           <div className="space-y-6">
             {/* Visit: actions */}
-            <div className="flex flex-col sm:flex-row items-end justify-end gap-4 p-4 bg-white rounded-xl shadow-sm border border-gray-200">
+            <div className="flex flex-col sm:flex-row items-end justify-end gap-4 p-4 rounded-xl ">
               <div className="flex items-end gap-2">
                 {!editMode ? (
                   <button
@@ -478,7 +478,7 @@ const VisitDetail = () => {
                     <button
                       type="button"
                       onClick={cancelEditVisit}
-                      className="inline-flex items-center gap-2 px-4 py-2.5 bg-white text-gray-700 border border-gray-300 hover:bg-gray-50 rounded-lg text-sm font-medium transition-colors"
+                      className="inline-flex items-center gap-2 px-4 py-2.5  text-gray-700 border border-gray-300 hover:bg-gray-50 rounded-lg text-sm font-medium transition-colors"
                       disabled={saving}
                     >
                       <CancelIcon className="w-4 h-4" />
@@ -731,16 +731,7 @@ const VisitDetail = () => {
                           className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm text-right focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
                         />
                       </div>
-                      <div className="md:col-span-6">
-                        <label className="block text-xs font-medium text-gray-700 mb-1">Notes</label>
-                        <input
-                          name="notes"
-                          value={addProcForm.notes}
-                          onChange={onAddProcField}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-                          placeholder="Optional notes"
-                        />
-                      </div>
+                      
                       {addProcErr && (
                         <div className="md:col-span-6 text-sm text-red-600">{addProcErr}</div>
                       )}

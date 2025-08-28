@@ -4,7 +4,7 @@
 
 import { supabase } from "../CreateClient";
 
-const API_BASE = "http://localhost:5000/api";
+const API_BASE = "https://dentalserver-6uja.onrender.com/api";
 const DEFAULT_TIMEOUT_MS = 20000;
 
 /* ------------------------------ ImageKit envs ---------------------------- */
