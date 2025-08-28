@@ -3,6 +3,7 @@ const { createClient } = require('@supabase/supabase-js');
 const multer = require('multer');
 const { v4: uuidv4 } = require('uuid');
 const mime = require('mime-types');
+const ImageKit = require('imagekit');
 
 /* ---------------- Supabase client bound to incoming JWT ---------------- */
 const supabaseForReq = (req) =>
@@ -10,6 +11,16 @@ const supabaseForReq = (req) =>
     global: { headers: { Authorization: req.headers.authorization } },
     auth: { persistSession: false },
   });
+
+/* ---------------- ImageKit (for deleting old files) -------------------- */
+const imagekit =
+  process.env.IK_PUBLIC_KEY && process.env.IK_PRIVATE_KEY && process.env.IK_URL_ENDPOINT
+    ? new ImageKit({
+        publicKey: process.env.IK_PUBLIC_KEY,
+        privateKey: process.env.IK_PRIVATE_KEY,
+        urlEndpoint: process.env.IK_URL_ENDPOINT,
+      })
+    : null;
 
 /* ---------------------------- small helpers ---------------------------- */
 const sbError = (res, error, status = 400) =>
@@ -40,14 +51,11 @@ const coercePhotoUrl = (src) => {
 };
 
 /* ----------------------- file upload: middleware ----------------------- */
-// Accept a single image in field "photo"
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 7 * 1024 * 1024 }, // 7 MB limit
+  limits: { fileSize: 7 * 1024 * 1024 }, // 7 MB
   fileFilter: (_req, file, cb) => {
-    if (!/^image\//i.test(file.mimetype)) {
-      return cb(new Error('Only image uploads are allowed'));
-    }
+    if (!/^image\//i.test(file.mimetype)) return cb(new Error('Only image uploads are allowed'));
     cb(null, true);
   },
 });
@@ -56,17 +64,14 @@ const uploadPhoto = upload.single('photo');
 /* ----------------------- file upload: Supabase fn ---------------------- */
 const BUCKET = process.env.PATIENT_BUCKET || 'patient-photos';
 
-/** Escape for use in RegExp */
-const reEscape = (s) => s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
-
-/** Convert any Supabase storage URL (public or signed) to an object path */
+/** Convert any Supabase storage URL (public/signed) to an object path (or return path as-is) */
 function urlToObjectPath(urlOrPath) {
   if (!urlOrPath) return null;
   const s = String(urlOrPath).trim();
   if (!s) return null;
   if (!s.startsWith('http')) return s.replace(/^\/+/, '');
 
-  const b = BUCKET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // escape
+  const b = BUCKET.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const re1 = new RegExp(`/storage/v1/object/(?:public|sign)/${b}/(.+?)(?:\\?|$)`);
   const re2 = new RegExp(`/storage/v1/object/${b}/(.+?)(?:\\?|$)`);
 
@@ -77,13 +82,9 @@ function urlToObjectPath(urlOrPath) {
   return null;
 }
 
-
 /** Always create a signed URL (private bucket) for a known object path */
 async function createSignedUrlSafe(supabase, objectPath, expiresIn = 3600) {
-  const { data, error } = await supabase
-    .storage
-    .from(BUCKET)
-    .createSignedUrl(objectPath, expiresIn);
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(objectPath, expiresIn);
   if (error) return null;
   return data?.signedUrl ?? null;
 }
@@ -111,6 +112,29 @@ async function uploadImageToSupabase({ supabase, file, userId, patientId }) {
   return { path: objectPath, signedUrl };
 }
 
+/** Delete a single storage object path (ignore errors) */
+async function deleteStorageObjectPath(supabase, objectPath) {
+  try {
+    if (!objectPath) return;
+    const { error } = await supabase.storage.from(BUCKET).remove([objectPath]);
+    if (error) {
+      console.warn('⚠️ Failed to delete old storage object:', objectPath, error.message || error);
+    }
+  } catch (e) {
+    console.warn('⚠️ Failed to delete old storage object:', objectPath, e?.message || e);
+  }
+}
+
+/** Delete ImageKit by fileId (ignore errors) */
+async function deleteImageKitByFileId(fileId) {
+  if (!imagekit || !fileId) return;
+  try {
+    await imagekit.deleteFile(fileId);
+  } catch (e) {
+    console.warn('⚠️ Failed to delete old ImageKit fileId:', fileId, e?.message || e);
+  }
+}
+
 /* -------------------- get current user id (from JWT) ------------------- */
 async function getUserIdFromReq(supabase) {
   const { data, error } = await supabase.auth.getUser();
@@ -119,7 +143,6 @@ async function getUserIdFromReq(supabase) {
 }
 
 /* --------------- body -> table row (used by UPDATE only) --------------- */
-// replace the photo block inside mapPatientBodyToRow()
 const mapPatientBodyToRow = (body = {}, { forUpdate = false } = {}) => {
   const row = {};
   const set = (k, v) => { if (v !== undefined) row[k] = v; };
@@ -140,7 +163,7 @@ const mapPatientBodyToRow = (body = {}, { forUpdate = false } = {}) => {
   set('occupation', body.occupation);
   set('emergency_contact', body.emergencyContact ?? null);
 
-  // ✅ Only touch photo_url if the client sent a photo field
+  // Only touch photo_url if the client sent a photo field
   let rawPhoto;
   let hasPhotoField = false;
   if (Object.prototype.hasOwnProperty.call(body, 'photoUrl')) {
@@ -153,15 +176,13 @@ const mapPatientBodyToRow = (body = {}, { forUpdate = false } = {}) => {
 
   if (hasPhotoField) {
     const asPath = urlToObjectPath(rawPhoto);
-    set('photo_url', asPath ?? rawPhoto ?? null); // null here means "explicitly clear"
+    set('photo_url', asPath ?? rawPhoto ?? null); // null means "explicitly clear"
   }
 
   return row;
 };
 
-
 /* ---------------- RPC mappers for atomic initial create ---------------- */
-// replace the photo block inside mapPatientRPC()
 const mapPatientRPC = (body = {}) => {
   let rawPhoto;
   if (Object.prototype.hasOwnProperty.call(body, 'photoUrl')) {
@@ -188,7 +209,6 @@ const mapPatientRPC = (body = {}) => {
     photo_url: (rawPhoto === undefined) ? null : (asPath ?? rawPhoto ?? null),
   };
 };
-
 
 const mapMedHistRPC = (mh = {}) => ({
   surgery_or_hospitalized: mh.surgeryOrHospitalized ?? '',
@@ -420,8 +440,7 @@ const getAllPatients = async (req, res) => {
     const signedRows = await Promise.all(
       (data ?? []).map(async (p) => {
         const pathMaybe = urlToObjectPath(p.photo_url);
-        // External URLs or null => return as is
-        if (!pathMaybe) return p;
+        if (!pathMaybe) return p; // external URLs or null
 
         const signed = await createSignedUrlSafe(supabase, pathMaybe, 3600);
         return { ...p, photo_url: signed || null };
@@ -477,8 +496,7 @@ const getPatient = async (req, res) => {
       patient: out,
       meta: {
         hasMedicalHistory: Array.isArray(mhRows) && mhRows.length > 0,
-        lastVisitAt:
-          Array.isArray(vRows) && vRows.length > 0 ? vRows[0].visit_at : null,
+        lastVisitAt: Array.isArray(vRows) && vRows.length > 0 ? vRows[0].visit_at : null,
       },
     });
   } catch (err) {
@@ -487,10 +505,26 @@ const getPatient = async (req, res) => {
 };
 
 // Update patient — store PATH; return fresh signed URL
+// ✅ Deletes previous Supabase object, and deletes previous ImageKit file if prevImageKitFileId provided.
 const updatePatient = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
     const { id } = req.params;
+
+    // Load existing row to know the old photo path
+    const { data: existing, error: exErr } = await supabase
+      .from('patients')
+      .select('id, photo_url')
+      .eq('id', id)
+      .single();
+
+    if (exErr?.code === 'PGRST116' || (!existing && !exErr)) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+    if (exErr) return sbError(res, exErr);
+
+    const oldPath = urlToObjectPath(existing?.photo_url);
+    const prevImageKitFileId = req.body?.prevImageKitFileId || req.body?.deletePrevImageKitFileId || null;
 
     let baseRow = mapPatientBodyToRow(req.body || {}, { forUpdate: true });
 
@@ -505,7 +539,7 @@ const updatePatient = async (req, res) => {
         patientId: id,
       });
       if (uploaded?.path) {
-        baseRow.photo_url = uploaded.path; // store path
+        baseRow.photo_url = uploaded.path; // store new path
       }
     }
 
@@ -525,13 +559,26 @@ const updatePatient = async (req, res) => {
     }
     if (error) return sbError(res, error);
 
-    // Sign on the way out
+    // If photo changed, delete the old storage object and/or old ImageKit file
+    try {
+      const newPath = urlToObjectPath(data.photo_url);
+      if (oldPath && oldPath !== newPath) {
+        await deleteStorageObjectPath(supabase, oldPath);
+        if (prevImageKitFileId) {
+          await deleteImageKitByFileId(prevImageKitFileId);
+        }
+      }
+    } catch (delErr) {
+      console.warn('⚠️ Photo cleanup failed:', delErr?.message || delErr);
+    }
+
+    // Sign on the way out if path-based
     const pathMaybe = urlToObjectPath(data.photo_url);
     const signed = pathMaybe ? await createSignedUrlSafe(supabase, pathMaybe, 3600) : null;
 
     return res.json({
       ...data,
-      photo_url: signed || (urlToObjectPath(data.photo_url) ? null : data.photo_url), // keep external URL
+      photo_url: signed || (urlToObjectPath(data.photo_url) ? null : data.photo_url),
     });
   } catch (err) {
     return sbError(res, err);
@@ -562,8 +609,8 @@ const deletePatient = async (req, res) => {
   }
 };
 
-
-// Update ONLY the photo (accepts JSON { photoUrl } OR multipart file under "photo")
+// Update ONLY the photo (JSON { photoUrl, prevImageKitFileId? } OR multipart "photo")
+// ✅ Deletes previous Supabase object, and previous ImageKit file if prevImageKitFileId provided.
 const updatePhoto = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
@@ -572,6 +619,22 @@ const updatePhoto = async (req, res) => {
     }
 
     const { id } = req.params;
+
+    // Load existing row to know old photo path
+    const { data: existing, error: exErr } = await supabase
+      .from('patients')
+      .select('id, photo_url')
+      .eq('id', id)
+      .single();
+
+    if (exErr?.code === 'PGRST116' || (!existing && !exErr)) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+    if (exErr) return sbError(res, exErr);
+
+    const oldPath = urlToObjectPath(existing?.photo_url);
+    const prevImageKitFileId = req.body?.prevImageKitFileId || req.body?.deletePrevImageKitFileId || null;
+
     let { photoUrl } = req.body;
 
     // If a file was uploaded, push to storage and prefer its path
@@ -583,17 +646,15 @@ const updatePhoto = async (req, res) => {
         supabase,
         file: req.file,
         userId,
-        patientId: id, // put it under /{userId}/patients/{id}/...
+        patientId: id,
       });
       photoUrl = uploaded?.path || null; // store the STORAGE PATH when we uploaded a file
     }
 
     if (photoUrl === undefined || photoUrl === null) {
-      // if neither JSON photoUrl nor file provided
       return res.status(400).json({ error: 'photoUrl or photo file is required' });
     }
 
-    // If photoUrl looks like a Supabase signed/public URL, convert to object path; otherwise keep external URL
     const asPath = urlToObjectPath(photoUrl);
     const rowUpdate = { photo_url: asPath ?? photoUrl };
 
@@ -609,22 +670,34 @@ const updatePhoto = async (req, res) => {
     }
     if (error) return sbError(res, error);
 
-    // Return a fresh signed URL if we stored a storage path
+    // Cleanup previous storage object and/or old IK file if changed
+    try {
+      const newPath = urlToObjectPath(data.photo_url);
+      if (oldPath && oldPath !== newPath) {
+        await deleteStorageObjectPath(supabase, oldPath);
+        if (prevImageKitFileId) {
+          await deleteImageKitByFileId(prevImageKitFileId);
+        }
+      }
+    } catch (delErr) {
+      console.warn('⚠️ Photo cleanup failed:', delErr?.message || delErr);
+    }
+
+    // Return fresh signed URL if we stored a storage path
     const pathMaybe = urlToObjectPath(data.photo_url);
     const signed = pathMaybe ? await createSignedUrlSafe(supabase, pathMaybe, 3600) : null;
 
     return res.json({
       ...data,
-      photo_url: signed || (pathMaybe ? null : data.photo_url), // keep external URLs as-is, sign storage paths
+      photo_url: signed || (pathMaybe ? null : data.photo_url),
     });
   } catch (err) {
     return sbError(res, err);
   }
 };
 
-
 module.exports = {
-  // middleware to use in routes:
+  // middleware:
   uploadPhoto,
 
   // controllers:
@@ -633,5 +706,5 @@ module.exports = {
   getPatient,
   updatePatient,
   deletePatient,
-  updatePhoto
+  updatePhoto,
 };

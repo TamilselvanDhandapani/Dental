@@ -201,6 +201,7 @@ export const patchPatient = (id, data) => {
  *   // or if you only have a data URL:
  *   await updatePatientSmart(id, { ...form, photoUrl: form.photoUrl })
  */
+// src/api.js (only the function below needs updating)
 export async function updatePatientSmart(id, data = {}) {
   assertId(id, "patientId");
 
@@ -216,25 +217,33 @@ export async function updatePatientSmart(id, data = {}) {
     if (f) file = f;
   }
 
-  // Upload file first if present, then set payload.photoUrl to the ImageKit URL
   if (file) {
     const ext = normalizeExt(file);
     const baseName = slug((file.name || "photo").replace(/\.[^.]+$/, "")) || "photo";
     const fileName = `${baseName}.${ext}`;
 
     const ik = await uploadImageKitFile(file, fileName, { folder: "/patients" });
-    payload.photoUrl = ik?.url || null; // store full CDN url
-    // Optionally send metadata to your API as well (if your backend supports it):
-    // payload.photoMeta = { filePath: ik?.filePath, thumbnailUrl: ik?.thumbnailUrl };
+    payload.photoUrl = ik?.url || null;     // CDN URL
+    payload.photoMeta = {
+      // send metadata if your backend wants to store or log it
+      fileId: ik?.fileId || null,
+      filePath: ik?.filePath || null,
+      thumbnailUrl: ik?.thumbnailUrl || null,
+      url: ik?.url || null,
+    };
 
     delete payload.photoFile;
   } else {
-    // No new file supplied; do not send `photoUrl` at all so server keeps existing value
+    // No new file supplied; do not send `photoUrl` so server keeps existing value
     if (!payload.photoUrl) delete payload.photoUrl;
   }
 
+  // If you know the old ImageKit fileId (e.g., from patient.photoMeta.fileId), pass it
+  // payload.prevImageKitFileId ||= currentPatient?.photoMeta?.fileId;
+
   return updatePatient(id, payload);
 }
+
 
 /* -------------------------- Medical History ------------------------------ */
 export const upsertMedicalHistory = (patientId, data) => {
