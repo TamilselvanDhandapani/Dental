@@ -14,7 +14,7 @@ import {
   getRevenueByYear,
   getCollectionsRateByMonth,
   getRevenueRolling12m,
-} from "../../utils/api"; // <- adjust if your path differs
+} from "../../utils/api";
 
 import {
   ResponsiveContainer,
@@ -50,12 +50,51 @@ const COLORS = {
   gray: { 200:"#e5e7eb", 300:"#d1d5db", 600:"#4b5563" },
 };
 
-// soft, varied fills for bars
-const LIGHT_PALETTE = [
-  "#E3F2FD", "#BBDEFB", "#C8E6C9", "#FFE0B2", "#FFCDD2",
-  "#D1C4E9", "#B3E5FC", "#F8BBD0", "#DCEDC8", "#FFF9C4",
-  "#E0F2F1", "#D7CCC8"
+// Medium bright palette
+const MEDIUM_BRIGHT_PALETTE = [
+  "#4ECDC4", "#FF6B6B", "#FFD166", "#06D6A0", "#118AB2",
+  "#073B4C", "#EF476F", "#7209B7", "#F72585", "#4361EE",
+  "#4CC9F0", "#560BAD"
 ];
+
+// Base year colors for known years
+const YEAR_COLORS = {
+  "2020": "#4ECDC4",
+  "2021": "#FF6B6B", 
+  "2022": "#FFD166",
+  "2023": "#06D6A0",
+  "2024": "#118AB2",
+  "2025": "#073B4C"
+};
+
+// Function to get color for any year (including future years)
+const getYearColor = (year) => {
+  // If we have a predefined color for this year, use it
+  if (YEAR_COLORS[year]) {
+    return YEAR_COLORS[year];
+  }
+  
+  // For years beyond our predefined ones, generate a color
+  // Use a base set of colors to cycle through
+  const baseColors = [
+    "#4ECDC4", "#FF6B6B", "#FFD166", "#06D6A0", "#118AB2",
+    "#073B4C", "#EF476F", "#7209B7", "#F72585", "#4361EE"
+  ];
+  
+  // Convert year to number and get a consistent index
+  const yearNum = parseInt(year, 10);
+  const colorIndex = (yearNum - 2020) % baseColors.length;
+  
+  return baseColors[colorIndex >= 0 ? colorIndex : 0];
+};
+
+// Month colors
+const MONTH_COLORS = {
+  "Jan": "#4ECDC4", "Feb": "#FF6B6B", "Mar": "#FFD166", 
+  "Apr": "#06D6A0", "May": "#118AB2", "Jun": "#073B4C",
+  "Jul": "#EF476F", "Aug": "#7209B7", "Sep": "#F72585",
+  "Oct": "#4361EE", "Nov": "#4CC9F0", "Dec": "#560BAD"
+};
 
 const selectStyles = {
   control: (base, state) => ({
@@ -200,11 +239,28 @@ const Chart = ({
   money = false,
   showGrid = true,
   strokeWidth = 2,
-  showBarLabels = true
+  showBarLabels = true,
+  isYearData = false,
+  isMonthData = false
 }) => {
   if (!Array.isArray(data) || data.length === 0) return <Note tone="info">No data available</Note>;
   const normalized = data.map((d) => ({ ...d, [valueKey]: fmtInt(d[valueKey]) }));
   const maxVal = Math.max(0, ...normalized.map(d => Number(d[valueKey]) || 0));
+
+  // Determine colors based on data type
+  let colorsToUse = itemColors;
+  if (!colorsToUse) {
+    if (isYearData) {
+      // For year data, use the getYearColor function
+      colorsToUse = normalized.map(item => getYearColor(item.label));
+    } else if (isMonthData) {
+      // For month data, use MONTH_COLORS
+      colorsToUse = normalized.map(item => MONTH_COLORS[item.label] || MEDIUM_BRIGHT_PALETTE[0]);
+    } else {
+      // For other data, use the medium bright palette
+      colorsToUse = MEDIUM_BRIGHT_PALETTE;
+    }
+  }
 
   if (type === "pie") {
     return (
@@ -225,7 +281,7 @@ const Chart = ({
               {normalized.map((entry, index) => (
                 <Cell
                   key={`cell-${index}`}
-                  fill={itemColors ? itemColors[index % itemColors.length] : LIGHT_PALETTE[index % LIGHT_PALETTE.length]}
+                  fill={colorsToUse[index % colorsToUse.length]}
                 />
               ))}
             </Pie>
@@ -257,17 +313,17 @@ const Chart = ({
             <DataComponent
               type="monotone"
               dataKey={valueKey}
-              stroke={COLORS.primary[500]}
+              stroke={isYearData ? getYearColor(normalized[0]?.label) : COLORS.primary[500]}
               strokeWidth={strokeWidth}
               fill={type === "area" ? "url(#colorGradient)" : undefined}
-              dot={{ fill: COLORS.primary[500], strokeWidth: 2, r: 4 }}
-              activeDot={{ r: 6, fill: COLORS.primary[600] }}
+              dot={{ fill: isYearData ? getYearColor(normalized[0]?.label) : COLORS.primary[500], strokeWidth: 2, r: 4 }}
+              activeDot={{ r: 6, fill: isYearData ? getYearColor(normalized[0]?.label) : COLORS.primary[600] }}
             />
             {type === "area" && (
               <defs>
                 <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor={COLORS.primary[500]} stopOpacity={0.25}/>
-                  <stop offset="95%" stopColor={COLORS.primary[500]} stopOpacity={0}/>
+                  <stop offset="5%" stopColor={isYearData ? getYearColor(normalized[0]?.label) : COLORS.primary[500]} stopOpacity={0.25}/>
+                  <stop offset="95%" stopColor={isYearData ? getYearColor(normalized[0]?.label) : COLORS.primary[500]} stopOpacity={0}/>
                 </linearGradient>
               </defs>
             )}
@@ -295,10 +351,10 @@ const Chart = ({
           />
           <Tooltip content={<CustomTooltip money={money} />} />
           <Bar dataKey={valueKey} radius={[4, 4, 0, 0]}>
-            {normalized.map((_, index) => (
+            {normalized.map((entry, index) => (
               <Cell
                 key={`cell-${index}`}
-                fill={itemColors ? itemColors[index % itemColors.length] : LIGHT_PALETTE[index % LIGHT_PALETTE.length]}
+                fill={colorsToUse[index % colorsToUse.length]}
               />
             ))}
             {showBarLabels && (
@@ -352,13 +408,13 @@ const BiaxialRevenueBars = ({ data, height = 300 }) => {
           />
           <Tooltip content={<CustomTooltip money />} />
           <Legend />
-          <Bar yAxisId="left" dataKey="total" name="Total" fill="#BAE6FD" radius={[4,4,0,0]}>
+          <Bar yAxisId="left" dataKey="total" name="Total" fill="#4ECDC4" radius={[4,4,0,0]}>
             <LabelList dataKey="total" position="top" formatter={(v)=>fmtMoney(v)} offset={6} style={{ fontSize: 12, fill: "#374151" }} />
           </Bar>
-          <Bar yAxisId="left" dataKey="paid" name="Paid" fill="#E9D5FF" radius={[4,4,0,0]}>
+          <Bar yAxisId="left" dataKey="paid" name="Paid" fill="#06D6A0" radius={[4,4,0,0]}>
             <LabelList dataKey="paid" position="top" formatter={(v)=>fmtMoney(v)} offset={6} style={{ fontSize: 12, fill: "#374151" }} />
           </Bar>
-          <Bar yAxisId="right" dataKey="due" name="Due" fill="#FDE68A" radius={[4,4,0,0]}>
+          <Bar yAxisId="right" dataKey="due" name="Due" fill="#FF6B6B" radius={[4,4,0,0]}>
             <LabelList dataKey="due" position="top" formatter={(v)=>fmtMoney(v)} offset={6} style={{ fontSize: 12, fill: "#374151" }} />
           </Bar>
         </BarChart>
@@ -384,8 +440,8 @@ const Analytics = () => {
   const [typeVYear, setTypeVYear] = useState("bar");
   const [typeVMonth, setTypeVMonth] = useState("line");
 
-  const [typeRevMonth, setTypeRevMonth] = useState("bar");
   const [typeRevYear, setTypeRevYear] = useState("bar");
+  const [typeRevMonth, setTypeRevMonth] = useState("bar");
   const [typeCollect, setTypeCollect] = useState("bar");
   const [typeRoll12, setTypeRoll12] = useState("area");
 
@@ -664,12 +720,6 @@ const Analytics = () => {
   const kpiChanges = { totalPatients: 0, totalVisits: 0, patientsLatestYear: 0, visitsLatestYear: 0, revenueThisYear: 0 };
   const getChangeType = (value) => (value > 0 ? "positive" : value < 0 ? "negative" : "neutral");
 
-  // per-chart color arrays
-  const monthColors = useMemo(
-    () => Array.from({ length: 12 }, (_, i) => LIGHT_PALETTE[i % LIGHT_PALETTE.length]),
-    []
-  );
-
   // Export helpers
   const exportCsv = (rows, filename) => {
     if (!rows?.length) return;
@@ -693,26 +743,7 @@ const Analytics = () => {
               <p className="text-sm text-gray-500 mt-1">Patients, visits & revenue (timezone-aware)</p>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <div className="flex items-center gap-2">
-                <FiGlobe className="text-gray-500" />
-                <div className="w-48">
-                  <Select
-                    isSearchable
-                    styles={selectStyles}
-                    options={[
-                      { value: "Asia/Kolkata", label: "Asia/Kolkata" },
-                      { value: "UTC", label: "UTC" },
-                      { value: "Asia/Dubai", label: "Asia/Dubai" },
-                      { value: "Asia/Singapore", label: "Asia/Singapore" },
-                      { value: "America/New_York", label: "America/New_York" },
-                      { value: "Europe/London", label: "Europe/London" },
-                    ]}
-                    value={{ value: tz, label: tz }}
-                    onChange={(opt) => setTz(opt?.value || "Asia/Kolkata")}
-                    placeholder="Timezone"
-                  />
-                </div>
-              </div>
+              
               {/* Global Year Selector */}
               <div className="w-40">
                 <Select
@@ -777,7 +808,7 @@ const Analytics = () => {
               right={<Segmented value={typePYear} onChange={setTypePYear} options={chartTypeOptions} size="sm" />}
               loading={loadingBase}
             >
-              <Chart type={typePYear} data={dataPatientsByYear} itemColors={LIGHT_PALETTE} />
+              <Chart type={typePYear} data={dataPatientsByYear} isYearData={true} />
             </Card>
 
             <Card
@@ -786,7 +817,7 @@ const Analytics = () => {
               right={<Segmented value={typePMonth} onChange={setTypePMonth} options={chartTypeOptions} size="sm" />}
               loading={loadingPMonth || loadingBase}
             >
-              <Chart type={typePMonth} data={dataPatientsByYearMonth} itemColors={LIGHT_PALETTE} />
+              <Chart type={typePMonth} data={dataPatientsByYearMonth} isMonthData={true} />
             </Card>
 
             <Card
@@ -795,7 +826,7 @@ const Analytics = () => {
               right={<Segmented value={typePGender} onChange={(v)=>setTypePGender(v)} options={chartTypeOptionsNoLine} size="sm" />}
               loading={loadingPGender || loadingBase}
             >
-              <Chart type={typePGender} data={dataPatientsByYearGender} />
+              <Chart type={typePGender} data={dataPatientsByYearGender} itemColors={MEDIUM_BRIGHT_PALETTE} />
             </Card>
 
             <Card
@@ -804,7 +835,7 @@ const Analytics = () => {
               right={<Segmented value={typePAge} onChange={setTypePAge} options={chartTypeOptions} size="sm" />}
               loading={loadingBase}
             >
-              <Chart type={typePAge} data={dataPatientsByAgeGroup} itemColors={LIGHT_PALETTE} />
+              <Chart type={typePAge} data={dataPatientsByAgeGroup} itemColors={MEDIUM_BRIGHT_PALETTE} />
             </Card>
           </div>
         </div>
@@ -821,7 +852,7 @@ const Analytics = () => {
               right={<Segmented value={typeVYear} onChange={setTypeVYear} options={chartTypeOptions} size="sm" />}
               loading={loadingBase}
             >
-              <Chart type={typeVYear} data={dataVisitsByYear} itemColors={LIGHT_PALETTE} />
+              <Chart type={typeVYear} data={dataVisitsByYear} isYearData={true} />
             </Card>
 
             <Card
@@ -830,7 +861,7 @@ const Analytics = () => {
               right={<Segmented value={typeVMonth} onChange={setTypeVMonth} options={chartTypeOptions} size="sm" />}
               loading={loadingVMonth || loadingBase}
             >
-              <Chart type={typeVMonth} data={dataVisitsByMonth} itemColors={LIGHT_PALETTE} />
+              <Chart type={typeVMonth} data={dataVisitsByMonth} isMonthData={true} />
             </Card>
           </div>
         </div>
@@ -848,7 +879,7 @@ const Analytics = () => {
               loading={loadingBase || loadingRevYear}
             >
               {/* Headroom & margin fixes applied inside Chart */}
-              <Chart type={typeRevYear} data={dataRevenueByYear} money itemColors={LIGHT_PALETTE} />
+              <Chart type={typeRevYear} data={dataRevenueByYear} money isYearData={true} />
             </Card>
 
             <Card
@@ -857,7 +888,7 @@ const Analytics = () => {
               right={<Segmented value={typeRevMonth} onChange={setTypeRevMonth} options={[{label:"Bar",value:"bar"},{label:"Line",value:"line"}]} size="sm" />}
               loading={loadingRevMonth || loadingBase}
             >
-              <Chart type={typeRevMonth} data={dataRevenueByMonth} money itemColors={LIGHT_PALETTE} />
+              <Chart type={typeRevMonth} data={dataRevenueByMonth} money isMonthData={true} />
             </Card>
 
             {/* Biaxial dual-axis chart */}
@@ -876,7 +907,7 @@ const Analytics = () => {
               loading={loadingCollect || loadingBase}
             >
               {/* plain numbers rather than % */}
-              <Chart type={typeCollect} data={dataCollectionsRate} showBarLabels itemColors={LIGHT_PALETTE} />
+              <Chart type={typeCollect} data={dataCollectionsRate} showBarLabels isMonthData={true} />
             </Card>
 
             <Card
