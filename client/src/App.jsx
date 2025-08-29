@@ -10,7 +10,7 @@ import VerifyOtp from "./AuthPages/VerifyOtp";
 import EmailConfirmed from "./AuthPages/EmailConfirmed";
 
 import Navbar from "./Page/Navbar";
-import Dashboard from "./components/Doctor/Dashboard";
+// import Dashboard from "./components/Doctor/Dashboard"; // ⟵ remove (no longer used)
 import MultiStepForm from "./components/Forms/MultiStepForm";
 import ProtectedRoute from "./ProtectedRoute";
 import Patients from "./components/Doctor/Patients";
@@ -19,7 +19,7 @@ import VisitDetail from "./components/Doctor/VisitDetail";
 import Analytics from "./components/Doctor/Analytics";
 import FollowUps from "./components/Doctor/FollowUps";
 import AppointmentDashboard from "./components/Doctor/Appointments";
-import DoctorLayout from "./components/Doctor/DoctorLayout"; // ← new
+import DoctorLayout from "./components/Doctor/DoctorLayout";
 
 const App = () => {
   return (
@@ -44,19 +44,20 @@ const App = () => {
               </ProtectedRoute>
             }
           >
-            {/* Right-pane routes */}
-            <Route index element={<Dashboard />} /> {/* /doctor */}
-            <Route path="form" element={<MultiStepForm />} />
-            <Route path="patients" element={<Patients />} />
+            {/* Patients is now the start page */}
+            <Route index element={<Patients />} />                {/* /doctor */}
+            <Route path="patients" element={<Patients />} />      {/* /doctor/patients */}
             <Route path="patients/:id" element={<PatientDetail />} />
             <Route path="visits/:visitId" element={<VisitDetail />} />
+            <Route path="form" element={<MultiStepForm />} />
             <Route path="followups" element={<FollowUps />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="appointments" element={<AppointmentDashboard />} />
           </Route>
 
-         
-           </Routes>
+          {/* Back-compat redirects */}
+          
+        </Routes>
       </Router>
     </ImageKitProvider>
   );
