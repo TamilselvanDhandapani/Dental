@@ -94,30 +94,9 @@ const DoctorLayout = () => {
       >
         <div className="flex flex-col justify-between h-full">
           <div>
-            {/* Logo / clinic */}
-            <div className="p-6 border-b border-teal-700 flex items-center gap-3">
-              <div className="p-2 bg-teal-700 rounded-lg">
-                <FaClinicMedical className="text-xl" />
-              </div>
-              <div>
-                <h1 className="font-bold text-xl">MediCare Clinic</h1>
-                <p className="text-teal-300 text-sm">Doctor Console</p>
-              </div>
-            </div>
-
-            {/* User */}
-            <div className="p-6 flex items-center gap-4 border-b border-teal-700">
-              <img
-                src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=200&q=80"
-                alt="Doctor avatar"
-                className="w-12 h-12 rounded-full object-cover border-2 border-teal-500"
-                loading="lazy"
-              />
-              <div>
-                <h2 className="font-semibold">Dr. Sarah Johnson</h2>
-                <p className="text-teal-300 text-sm">Cardiologist</p>
-              </div>
-            </div>
+          
+           
+           
 
             {/* Nav */}
             <nav className="p-4 space-y-2">
@@ -156,73 +135,13 @@ const DoctorLayout = () => {
             </nav>
           </div>
 
-          {/* Footer actions */}
-          <div className="p-4 border-t border-teal-700">
-            <button
-              className="flex items-center gap-4 px-4 py-3 rounded-xl text-teal-100 hover:bg-teal-800 hover:text-white w-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-              type="button"
-            >
-              <FaCog className="text-lg" />
-              <span className="font-medium">Settings</span>
-            </button>
-            <button
-              className="mt-2 flex items-center gap-4 px-4 py-3 rounded-xl text-teal-100 hover:bg-teal-800 hover:text-white w-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-              type="button"
-              onClick={() => {/* hook your logout */}}
-            >
-              <FaSignOutAlt className="text-lg" />
-              <span className="font-medium">Logout</span>
-            </button>
-          </div>
+          
         </div>
       </motion.aside>
 
       {/* Main column */}
       <div className="flex-1 flex flex-col lg:ml-0">
-        {/* Top bar */}
-        <header className="sticky top-0 bg-white border-b border-gray-200 z-30">
-          <div className="max-w-7xl mx-auto flex items-center justify-between p-4">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={toggleSidebar}
-                className="p-2 rounded-lg bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 lg:hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-                aria-label={sidebarOpen ? "Close sidebar" : "Open sidebar"}
-                aria-expanded={sidebarOpen}
-                aria-controls="doctor-sidebar"
-              >
-                {sidebarOpen ? <FaTimes /> : <FaBars />}
-              </button>
-              <h1 className="text-xl font-semibold text-gray-800 hidden sm:block">
-                Doctor Dashboard
-              </h1>
-            </div>
-
-            <div className="flex items-center gap-4">
-              <button
-                className="p-2 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 relative focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-600"
-                aria-label="Notifications"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-                </svg>
-                <span className="absolute top-0 right-0 w-2 h-2 bg-red-500 rounded-full" />
-              </button>
-
-              <div className="hidden md:flex items-center gap-3 p-2 rounded-lg">
-                <img
-                  src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=200&q=80"
-                  alt="Doctor avatar"
-                  className="w-8 h-8 rounded-full object-cover"
-                  loading="lazy"
-                />
-                <div className="hidden lg:block">
-                  <p className="text-sm font-medium text-gray-800">Dr. Sarah Johnson</p>
-                  <p className="text-xs text-gray-500">Cardiologist</p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </header>
+     
 
         {/* Page content */}
         <main className="flex-1 p-4 md:p-6">
