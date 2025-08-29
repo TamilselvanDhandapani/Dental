@@ -1,7 +1,6 @@
-// src/App.jsx
 import React from "react";
-import { HashRouter as Router, Routes, Route } from "react-router-dom";
-import ImageKitProvider from "./components/Forms/ImageKitProvider"; // ← your wrapper
+import { HashRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import ImageKitProvider from "./components/Forms/ImageKitProvider";
 
 import Login from "./AuthPages/Login";
 import ForgotPassword from "./AuthPages/ForgotPassword";
@@ -20,6 +19,7 @@ import VisitDetail from "./components/Doctor/VisitDetail";
 import Analytics from "./components/Doctor/Analytics";
 import FollowUps from "./components/Doctor/FollowUps";
 import AppointmentDashboard from "./components/Doctor/Appointments";
+import DoctorLayout from "./components/Doctor/DoctorLayout"; // ← new
 
 const App = () => {
   return (
@@ -35,16 +35,28 @@ const App = () => {
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/email-confirmed" element={<EmailConfirmed />} />
 
-          {/* Private & Protected routes */}
-          <Route path="/doctor/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          <Route path="/form"              element={<ProtectedRoute><MultiStepForm /></ProtectedRoute>} />
-          <Route path="/patients"          element={<ProtectedRoute><Patients /></ProtectedRoute>} />
-          <Route path="/patients/:id"      element={<ProtectedRoute><PatientDetail /></ProtectedRoute>} />
-          <Route path="/visits/:visitId"   element={<ProtectedRoute><VisitDetail /></ProtectedRoute>} />
-          <Route path="/followups"         element={<ProtectedRoute><FollowUps /></ProtectedRoute>} />
-          <Route path="/analytics"         element={<ProtectedRoute><Analytics /></ProtectedRoute>} />
-          <Route path="/appointments"      element={<ProtectedRoute><AppointmentDashboard /></ProtectedRoute>} />
-        </Routes>
+          {/* Protected / Doctor area with sidebar layout */}
+          <Route
+            path="/doctor"
+            element={
+              <ProtectedRoute>
+                <DoctorLayout />
+              </ProtectedRoute>
+            }
+          >
+            {/* Right-pane routes */}
+            <Route index element={<Dashboard />} /> {/* /doctor */}
+            <Route path="form" element={<MultiStepForm />} />
+            <Route path="patients" element={<Patients />} />
+            <Route path="patients/:id" element={<PatientDetail />} />
+            <Route path="visits/:visitId" element={<VisitDetail />} />
+            <Route path="followups" element={<FollowUps />} />
+            <Route path="analytics" element={<Analytics />} />
+            <Route path="appointments" element={<AppointmentDashboard />} />
+          </Route>
+
+         
+           </Routes>
       </Router>
     </ImageKitProvider>
   );
