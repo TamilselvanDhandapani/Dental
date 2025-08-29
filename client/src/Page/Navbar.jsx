@@ -48,7 +48,7 @@ const Navbar = () => {
               <FaTooth className="h-12 w-8 text-teal-500" />
           </div>
             <div className="">
-              <Link to="/" className="ml-2 text-lg font-bold text-gray-900">
+              <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
               DentalCare
             </Link> 
             
