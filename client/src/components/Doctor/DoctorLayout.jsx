@@ -107,7 +107,7 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={handleLogout}
-                  className="ml-4 p-2 rounded-full text-gray-500 hover:text-sky-600 hover:bg-gray-100 focus:outline-none"
+                  className="ml-4 p-2 rounded-full text-gray-500 hover:text-sky-600 hover:bg-gray-100 cursor-pointer focus:outline-none"
                   title="Logout"
                 >
                   <FaSignOutAlt className="h-5 w-5" />
