@@ -6,7 +6,7 @@ import { supabase } from "../../CreateClient"; // ← adjust if your path differ
 // Icons
 import {
   FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus, FaBars, FaTimes,
-  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine, FaClinicMedical,
+  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine,
 } from "react-icons/fa";
 import { FaRegCalendarCheck } from "react-icons/fa6";
 
@@ -22,117 +22,13 @@ const navItems = [
 const SIDEBAR_W = 320;
 
 /* ---------------------------------- Navbar ---------------------------------- */
-const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
-  const [user, setUser] = useState(null);
-  const navigate = useNavigate();
-  const location = useLocation();
 
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      const { data } = await supabase.auth.getSession();
-      if (mounted) setUser(data.session?.user ?? null);
-    })();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-    return () => { mounted = false; subscription?.unsubscribe(); };
-  }, []);
-
-  useEffect(() => {
-    // Close mobile sidebar when navigating via top links
-    if (typeof onMenuClick === "function" && menuOpen) onMenuClick(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
-  };
-
-  return (
-    <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/85 border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          {/* Left: mobile menu + brand */}
-          <div className="flex items-center">
-            {typeof onMenuClick === "function" && (
-              <button
-                onClick={() => onMenuClick(!menuOpen)}
-                className="mr-2 p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 lg:hidden"
-                aria-label={menuOpen ? "Close sidebar" : "Open sidebar"}
-                aria-expanded={menuOpen}
-                aria-controls="doctor-sidebar"
-              >
-                {menuOpen ? <FaTimes /> : <FaBars />}
-              </button>
-            )}
-
-            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center">
-              <FaTooth className="h-12 w-8 text-sky-500" />
-              <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
-                DentalCare
-              </Link>
-            </motion.div>
-          </div>
-
-          {/* Right: auth */}
-          <div className="flex items-center">
-            {!user ? (
-              <div className="flex space-x-2">
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Link
-                    to="/"
-                    className="p-2 md:px-4 md:py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center"
-                    aria-label="Sign In"
-                  >
-                    <FaSignInAlt className="md:mr-2" />
-                    <span className="hidden md:inline">Sign In</span>
-                  </Link>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                  <Link
-                    to="/register"
-                    className="p-2 md:px-4 md:py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 flex items-center"
-                    aria-label="Sign Up"
-                  >
-                    <FaUserPlus className="md:mr-2" />
-                    <span className="hidden md:inline">Sign Up</span>
-                  </Link>
-                </motion.div>
-              </div>
-            ) : (
-              <div className="ml-4 flex items-center md:ml-6">
-                <div className="flex items-center">
-                  <FaUser className="h-5 w-5 text-gray-500" />
-                  <span className="ml-2 text-sm font-medium text-gray-700">
-                    {user.user_metadata?.username || user.email?.split("@")[0]}
-                  </span>
-                </div>
-                <motion.button
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                  onClick={handleLogout}
-                  className="ml-4 p-2 rounded-full text-gray-500 hover:text-sky-600 hover:bg-gray-100 focus:outline-none"
-                  title="Logout"
-                >
-                  <FaSignOutAlt className="h-5 w-5" />
-                </motion.button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </nav>
-  );
-};
 
 /* ------------------------------- Doctor Layout ------------------------------- */
 const DoctorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [authUser, setAuthUser] = useState(null); // ← get user for sidebar username
+  const [authUser, setAuthUser] = useState(null); // for sidebar username
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -172,7 +68,8 @@ const DoctorLayout = () => {
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  const sidebarX = isDesktop ? 0 : (sidebarOpen ? 0 : -SIDEBAR_W);
+  // Slide from RIGHT on mobile, stay in place on desktop
+  const sidebarX = isDesktop ? 0 : (sidebarOpen ? 0 : SIDEBAR_W);
 
   // Logout handler for sidebar button
   const handleSidebarLogout = async () => {
@@ -207,7 +104,7 @@ const DoctorLayout = () => {
             )}
           </AnimatePresence>
 
-          {/* Sidebar */}
+          {/* Sidebar (RIGHT on mobile, LEFT sticky on desktop) */}
           <motion.aside
             id="doctor-sidebar"
             initial={false}
@@ -219,22 +116,15 @@ const DoctorLayout = () => {
               "h-[calc(100vh-4rem)]",
               "w-[320px]",
               "bg-gradient-to-b from-sky-900 to-sky-800 text-white",
-              "overflow-y-auto rounded-r-2xl lg:rounded-2xl",
+              "overflow-y-auto rounded-l-2xl lg:rounded-2xl", // rounded on the visible edge (left when docked on right)
+              // Positioning: right on mobile, left on desktop
+              "right-0 lg:right-auto lg:left-0",
             ].join(" ")}
             aria-hidden={!isDesktop && !sidebarOpen}
           >
             <div className="flex flex-col justify-between h-full">
               <div>
-                {/* Brand in sidebar */}
-                <div className="p-6 border-b border-sky-700 flex items-center gap-3">
-                  <div className="p-2 bg-sky-700 rounded-lg">
-                    <FaClinicMedical className="text-xl" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-lg">MediCare Clinic</h2>
-                    <p className="text-sky-300 text-sm">Doctor Console</p>
-                  </div>
-                </div>
+                {/* --- Brand removed from sidebar as requested --- */}
 
                 {/* User (username only; photo removed) */}
                 <div className="p-6 border-b border-sky-700">
@@ -280,7 +170,7 @@ const DoctorLayout = () => {
                 </nav>
               </div>
 
-              {/* Footer actions (Settings removed) */}
+              {/* Footer actions (only Logout; Settings removed) */}
               <div className="p-4 border-t border-sky-700">
                 <button
                   className="flex items-center gap-4 px-4 py-3 rounded-xl text-sky-100 hover:bg-sky-800 hover:text-white w-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"

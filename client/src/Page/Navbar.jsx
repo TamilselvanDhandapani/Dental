@@ -4,66 +4,57 @@ import { motion } from "framer-motion";
 import { FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
 
-const Navbar = () => {
+const Navbar = ({ onMenuClick, menuOpen = false }) => {
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     let mounted = true;
-
-    // get current session on mount
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (mounted) setUser(data.session?.user ?? null);
     })();
-
-    // listen for auth state changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setUser(session?.user ?? null);
     });
-
-    return () => {
-      mounted = false;
-      subscription?.unsubscribe();
-    };
+    return () => { mounted = false; subscription?.unsubscribe(); };
   }, []);
+
+  useEffect(() => {
+    // Close mobile sidebar when navigating via top links
+    if (typeof onMenuClick === "function" && menuOpen) onMenuClick(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    navigate("/");
   };
+
+  const displayName =
+    user?.user_metadata?.username ??
+    user?.email?.split("@")[0] ??
+    "User";
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/85 border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="flex-shrink-0 flex items-center"
-          >
-          <div>
-              <FaTooth className="h-12 w-8 text-teal-500" />
-          </div>
-            <div className="">
-              <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
+          {/* Left: brand only */}
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center">
+            <FaTooth className="h-12 w-8 text-sky-500" />
+            <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
               DentalCare
-            </Link> 
-            
-            </div>
+            </Link>
           </motion.div>
 
-          {/* Auth Section */}
+          {/* Right: auth (desktop) + mobile menu button on the far right */}
           <div className="flex items-center">
+            {/* Logged-out actions: show from sm+ to keep room for the menu on tiny screens */}
             {!user ? (
-              <div className="flex space-x-2">
-                {/* Sign In - Shows icon on small screens, text + icon on larger */}
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
+              <div className="hidden sm:flex space-x-2">
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Link
                     to="/"
                     className="p-2 md:px-4 md:py-2 border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 flex items-center"
@@ -73,15 +64,11 @@ const Navbar = () => {
                     <span className="hidden md:inline">Sign In</span>
                   </Link>
                 </motion.div>
-                
-                {/* Sign Up - Shows icon on small screens, text + icon on larger */}
-                <motion.div
-                  whileHover={{ scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
+
+                <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
                   <Link
                     to="/register"
-                    className="p-2 md:px-4 md:py-2 bg-teal-600 text-white rounded-lg text-sm font-medium hover:bg-teal-700 flex items-center"
+                    className="p-2 md:px-4 md:py-2 bg-sky-600 text-white rounded-lg text-sm font-medium hover:bg-sky-700 flex items-center"
                     aria-label="Sign Up"
                   >
                     <FaUserPlus className="md:mr-2" />
@@ -90,23 +77,37 @@ const Navbar = () => {
                 </motion.div>
               </div>
             ) : (
-              <div className="ml-4 flex items-center md:ml-6">
+              // Logged-in: hide username & logout on mobile; show on md+
+              <div className="hidden md:flex items-center md:ml-6">
                 <div className="flex items-center">
                   <FaUser className="h-5 w-5 text-gray-500" />
                   <span className="ml-2 text-sm font-medium text-gray-700">
-                    {user.user_metadata?.username || user.email.split("@")[0]}
+                    {displayName}
                   </span>
                 </div>
                 <motion.button
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                   onClick={handleLogout}
-                  className="ml-4 p-2 rounded-full text-gray-500 hover:text-teal-600 hover:bg-gray-100 focus:outline-none"
+                  className="ml-4 p-2 rounded-full text-gray-500 hover:text-sky-600 hover:bg-gray-100 focus:outline-none"
                   title="Logout"
                 >
                   <FaSignOutAlt className="h-5 w-5" />
                 </motion.button>
               </div>
+            )}
+
+            {/* Mobile menu toggle on the RIGHT */}
+            {typeof onMenuClick === "function" && (
+              <button
+                onClick={() => onMenuClick(!menuOpen)}
+                className="ml-2 p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 lg:hidden"
+                aria-label={menuOpen ? "Close sidebar" : "Open sidebar"}
+                aria-expanded={menuOpen}
+                aria-controls="doctor-sidebar"
+              >
+                {menuOpen ? <FaTimes /> : <FaBars />}
+              </button>
             )}
           </div>
         </div>
@@ -114,5 +115,4 @@ const Navbar = () => {
     </nav>
   );
 };
-
 export default Navbar;
