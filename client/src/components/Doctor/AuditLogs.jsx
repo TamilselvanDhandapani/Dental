@@ -111,18 +111,7 @@ const AuditLogs = () => {
             </div>
 
             {/* Optional: changed columns chips (kept concise) */}
-            {Array.isArray(ev.changed_cols) && ev.changed_cols.length > 0 && (
-              <div className="mt-2 flex flex-wrap gap-1">
-                {ev.changed_cols.map((c, i) => (
-                  <span
-                    key={i}
-                    className="px-2 py-0.5 bg-indigo-50 text-indigo-700 rounded-full text-xs"
-                  >
-                    {c}
-                  </span>
-                ))}
-              </div>
-            )}
+           
           </div>
 
           {/* Right: when */}
