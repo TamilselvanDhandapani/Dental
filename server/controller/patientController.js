@@ -5,12 +5,19 @@ const { v4: uuidv4 } = require('uuid');
 const mime = require('mime-types');
 const ImageKit = require('imagekit');
 
-/* ---------------- Supabase client bound to incoming JWT ---------------- */
+/* ---------------- Supabase clients ---------------- */
+// Request-bound client (enforces DB RLS via the caller's JWT)
 const supabaseForReq = (req) =>
   createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: req.headers.authorization } },
     auth: { persistSession: false },
   });
+
+// Admin client (server-side service role) — use ONLY for Storage signing
+const supabaseAdmin = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 /* ---------------- ImageKit (for deleting old files) -------------------- */
 const imagekit =
@@ -25,6 +32,20 @@ const imagekit =
 /* ---------------------------- small helpers ---------------------------- */
 const sbError = (res, error, status = 400) =>
   res.status(status).json({ error: error?.message || String(error) });
+
+const requireAuth = async (req, res) => {
+  if (!req.headers.authorization) {
+    res.status(401).json({ error: 'Unauthorized' });
+    return null;
+  }
+  const sb = supabaseForReq(req);
+  const { data, error } = await sb.auth.getUser();
+  if (error || !data?.user?.id) {
+    res.status(401).json({ error: 'Invalid user' });
+    return null;
+  }
+  return { supabase: sb, userId: data.user.id, user: data.user };
+};
 
 const toDateOnly = (v) => {
   if (!v) return null;
@@ -82,14 +103,15 @@ function urlToObjectPath(urlOrPath) {
   return null;
 }
 
-/** Always create a signed URL (private bucket) for a known object path */
-async function createSignedUrlSafe(supabase, objectPath, expiresIn = 3600) {
-  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(objectPath, expiresIn);
+/** Always create a signed URL via service role so any authenticated reader can view */
+async function createSignedUrlServer(objectPath, expiresIn = 3600) {
+  if (!objectPath) return null;
+  const { data, error } = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(objectPath, expiresIn);
   if (error) return null;
   return data?.signedUrl ?? null;
 }
 
-/** Upload to Storage and return { path, signedUrl } */
+/** Upload to Storage (scoped to the calling user) and return { path, signedUrl } */
 async function uploadImageToSupabase({ supabase, file, userId, patientId }) {
   if (!file) return null;
 
@@ -108,15 +130,16 @@ async function uploadImageToSupabase({ supabase, file, userId, patientId }) {
     });
   if (upErr) throw upErr;
 
-  const signedUrl = await createSignedUrlSafe(supabase, objectPath, 3600);
+  // Use service role to sign so cross-user reads work
+  const signedUrl = await createSignedUrlServer(objectPath, 3600);
   return { path: objectPath, signedUrl };
 }
 
 /** Delete a single storage object path (ignore errors) */
-async function deleteStorageObjectPath(supabase, objectPath) {
+async function deleteStorageObjectPath(objectPath) {
   try {
     if (!objectPath) return;
-    const { error } = await supabase.storage.from(BUCKET).remove([objectPath]);
+    const { error } = await supabaseAdmin.storage.from(BUCKET).remove([objectPath]);
     if (error) {
       console.warn('⚠️ Failed to delete old storage object:', objectPath, error.message || error);
     }
@@ -133,13 +156,6 @@ async function deleteImageKitByFileId(fileId) {
   } catch (e) {
     console.warn('⚠️ Failed to delete old ImageKit fileId:', fileId, e?.message || e);
   }
-}
-
-/* -------------------- get current user id (from JWT) ------------------- */
-async function getUserIdFromReq(supabase) {
-  const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
-  return data?.user?.id || null;
 }
 
 /* --------------- body -> table row (used by UPDATE only) --------------- */
@@ -270,18 +286,21 @@ const normalizeFindings = (v = {}) => {
   return null;
 };
 
+const clampMoney = (total, paid) => {
+  const t = parseNum(total);
+  const p = parseNum(paid);
+  return { total: t, paid: p, due: clampNum(t - p) };
+};
+
 const normalizeProcedures = (root = {}) => {
   if (Array.isArray(root.procedures)) {
     return root.procedures.map((r) => {
-      const total = parseNum(r.total);
-      const paid = parseNum(r.paid);
+      const { total, paid, due } = clampMoney(r.total, r.paid);
       return {
         visitDate: r.visitDate ? toDateOnly(r.visitDate) : null,
         procedure: String(r.procedure || '').trim(),
         nextApptDate: r.nextApptDate ? toDateOnly(r.nextApptDate) : null,
-        total,
-        paid,
-        due: clampNum(total - paid),
+        total, paid, due,
       };
     });
   }
@@ -302,15 +321,12 @@ const normalizeProcedures = (root = {}) => {
       return anyContent;
     })
     .map((r) => {
-      const total = parseNum(r.total);
-      const paid  = parseNum(r.paid);
+      const { total, paid, due } = clampMoney(r.total, r.paid);
       return {
         visitDate: r.visitDate ? toDateOnly(r.visitDate) : null,
         procedure: String(r.procedure || '').trim(),
         nextApptDate: r.nextApptDate ? toDateOnly(r.nextApptDate) : null,
-        total,
-        paid,
-        due: clampNum(total - paid),
+        total, paid, due,
       };
     });
 
@@ -339,16 +355,12 @@ const mapVisitRPC = (v = {}) => {
 
 /* ---------------------------- Controllers ---------------------------- */
 
+// Create patient + med history + initial visit (atomic RPC)
 const createPatient = async (req, res) => {
   try {
-    const supabase = supabaseForReq(req);
-
-    if (!req.headers.authorization) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
-
-    const userId = await getUserIdFromReq(supabase);
-    if (!userId) return res.status(401).json({ error: 'Invalid user' });
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const { supabase, userId } = auth;
 
     const body = req.body || {};
 
@@ -411,10 +423,10 @@ const createPatient = async (req, res) => {
 
     const row = Array.isArray(data) ? data[0] : data;
 
-    // Sign on the way out if we stored a Supabase path
+    // Always sign via service-role so any viewer can see it
     const pathMaybe = urlToObjectPath(row?.photo_url);
     if (pathMaybe) {
-      const signed = await createSignedUrlSafe(supabase, pathMaybe, 3600);
+      const signed = await createSignedUrlServer(pathMaybe, 3600);
       row.photo_url = signed || null;
     }
     return res.status(201).json(row);
@@ -423,10 +435,12 @@ const createPatient = async (req, res) => {
   }
 };
 
-// List patients (RLS filters to owner) — always return fresh signed URLs
+// List patients (RLS: any authenticated user can read ALL)
 const getAllPatients = async (req, res) => {
   try {
-    const supabase = supabaseForReq(req);
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const supabase = auth.supabase;
     const { limit = 100, offset = 0 } = req.query;
 
     const { data, error } = await supabase
@@ -441,8 +455,7 @@ const getAllPatients = async (req, res) => {
       (data ?? []).map(async (p) => {
         const pathMaybe = urlToObjectPath(p.photo_url);
         if (!pathMaybe) return p; // external URLs or null
-
-        const signed = await createSignedUrlSafe(supabase, pathMaybe, 3600);
+        const signed = await createSignedUrlServer(pathMaybe, 3600);
         return { ...p, photo_url: signed || null };
       })
     );
@@ -453,10 +466,12 @@ const getAllPatients = async (req, res) => {
   }
 };
 
-// Fetch one + quick meta — return fresh signed URL
+// Fetch one + quick meta (RLS: any authenticated user can read ALL)
 const getPatient = async (req, res) => {
   try {
-    const supabase = supabaseForReq(req);
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const supabase = auth.supabase;
     const { id } = req.params;
 
     const { data: patient, error: pErr } = await supabase
@@ -488,7 +503,7 @@ const getPatient = async (req, res) => {
     const out = { ...patient };
     const pathMaybe = urlToObjectPath(out.photo_url);
     if (pathMaybe) {
-      const signed = await createSignedUrlSafe(supabase, pathMaybe, 3600);
+      const signed = await createSignedUrlServer(pathMaybe, 3600);
       out.photo_url = signed || null;
     }
 
@@ -504,11 +519,13 @@ const getPatient = async (req, res) => {
   }
 };
 
-// Update patient — store PATH; return fresh signed URL
+// Update patient (owner-only via RLS) — store PATH; return fresh signed URL
 // ✅ Deletes previous Supabase object, and deletes previous ImageKit file if prevImageKitFileId provided.
 const updatePatient = async (req, res) => {
   try {
-    const supabase = supabaseForReq(req);
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const { supabase, userId } = auth;
     const { id } = req.params;
 
     // Load existing row to know the old photo path
@@ -530,8 +547,6 @@ const updatePatient = async (req, res) => {
 
     // If a new file is uploaded, push to storage and set row.photo_url to PATH
     if (req.file) {
-      const userId = await getUserIdFromReq(supabase);
-      if (!userId) return res.status(401).json({ error: 'Invalid user' });
       const uploaded = await uploadImageToSupabase({
         supabase,
         file: req.file,
@@ -563,7 +578,7 @@ const updatePatient = async (req, res) => {
     try {
       const newPath = urlToObjectPath(data.photo_url);
       if (oldPath && oldPath !== newPath) {
-        await deleteStorageObjectPath(supabase, oldPath);
+        await deleteStorageObjectPath(oldPath);
         if (prevImageKitFileId) {
           await deleteImageKitByFileId(prevImageKitFileId);
         }
@@ -572,9 +587,9 @@ const updatePatient = async (req, res) => {
       console.warn('⚠️ Photo cleanup failed:', delErr?.message || delErr);
     }
 
-    // Sign on the way out if path-based
+    // Sign on the way out (service role) if path-based
     const pathMaybe = urlToObjectPath(data.photo_url);
-    const signed = pathMaybe ? await createSignedUrlSafe(supabase, pathMaybe, 3600) : null;
+    const signed = pathMaybe ? await createSignedUrlServer(pathMaybe, 3600) : null;
 
     return res.json({
       ...data,
@@ -585,11 +600,25 @@ const updatePatient = async (req, res) => {
   }
 };
 
-// Delete patient
+// Delete patient (owner-only via RLS)
 const deletePatient = async (req, res) => {
   try {
-    const supabase = supabaseForReq(req);
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const supabase = auth.supabase;
     const { id } = req.params;
+
+    // Grab photo path before deletion to clean up storage
+    const { data: existing, error: exErr } = await supabase
+      .from('patients')
+      .select('id, photo_url')
+      .eq('id', id)
+      .single();
+    if (exErr?.code === 'PGRST116' || (!existing && !exErr)) {
+      return res.status(404).json({ error: 'Patient not found' });
+    }
+    if (exErr) return sbError(res, exErr);
+    const oldPath = urlToObjectPath(existing?.photo_url);
 
     const { data, error } = await supabase
       .from('patients')
@@ -603,6 +632,11 @@ const deletePatient = async (req, res) => {
     }
     if (error) return sbError(res, error);
 
+    // Best-effort cleanup
+    if (oldPath) {
+      await deleteStorageObjectPath(oldPath);
+    }
+
     return res.json({ message: 'Patient deleted successfully' });
   } catch (err) {
     return sbError(res, err);
@@ -613,10 +647,9 @@ const deletePatient = async (req, res) => {
 // ✅ Deletes previous Supabase object, and previous ImageKit file if prevImageKitFileId provided.
 const updatePhoto = async (req, res) => {
   try {
-    const supabase = supabaseForReq(req);
-    if (!req.headers.authorization) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    const auth = await requireAuth(req, res);
+    if (!auth) return;
+    const { supabase, userId } = auth;
 
     const { id } = req.params;
 
@@ -639,9 +672,6 @@ const updatePhoto = async (req, res) => {
 
     // If a file was uploaded, push to storage and prefer its path
     if (req.file) {
-      const userId = await getUserIdFromReq(supabase);
-      if (!userId) return res.status(401).json({ error: 'Invalid user' });
-
       const uploaded = await uploadImageToSupabase({
         supabase,
         file: req.file,
@@ -674,7 +704,7 @@ const updatePhoto = async (req, res) => {
     try {
       const newPath = urlToObjectPath(data.photo_url);
       if (oldPath && oldPath !== newPath) {
-        await deleteStorageObjectPath(supabase, oldPath);
+        await deleteStorageObjectPath(oldPath);
         if (prevImageKitFileId) {
           await deleteImageKitByFileId(prevImageKitFileId);
         }
@@ -683,9 +713,9 @@ const updatePhoto = async (req, res) => {
       console.warn('⚠️ Photo cleanup failed:', delErr?.message || delErr);
     }
 
-    // Return fresh signed URL if we stored a storage path
+    // Return fresh signed URL (service role) if we stored a storage path
     const pathMaybe = urlToObjectPath(data.photo_url);
-    const signed = pathMaybe ? await createSignedUrlSafe(supabase, pathMaybe, 3600) : null;
+    const signed = pathMaybe ? await createSignedUrlServer(pathMaybe, 3600) : null;
 
     return res.json({
       ...data,
