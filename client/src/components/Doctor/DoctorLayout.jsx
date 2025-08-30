@@ -200,15 +200,7 @@ const DoctorLayout = () => {
             <div className="flex flex-col justify-between h-full">
               <div>
                 {/* Brand in sidebar */}
-                <div className="p-6 border-b border-sky-700 flex items-center gap-3">
-                  <div className="p-2 bg-sky-700 rounded-lg">
-                    <FaClinicMedical className="text-xl" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-lg">MediCare Clinic</h2>
-                    <p className="text-sky-300 text-sm">Doctor Console</p>
-                  </div>
-                </div>
+                
 
                 {/* User */}
                 <div className="p-6 flex items-center gap-4 border-b border-sky-700">
