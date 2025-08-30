@@ -6,7 +6,7 @@ import { supabase } from "../../CreateClient"; // ← adjust if your path differ
 // Icons
 import {
   FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus, FaBars, FaTimes,
-  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine, FaCog, FaClinicMedical,
+  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine, FaClinicMedical,
 } from "react-icons/fa";
 import { FaRegCalendarCheck } from "react-icons/fa6";
 
@@ -107,7 +107,7 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
                 <div className="flex items-center">
                   <FaUser className="h-5 w-5 text-gray-500" />
                   <span className="ml-2 text-sm font-medium text-gray-700">
-                    {user.user_metadata?.username || user.email.split("@")[0]}
+                    {user.user_metadata?.username || user.email?.split("@")[0]}
                   </span>
                 </div>
                 <motion.button
@@ -132,7 +132,22 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
 const DoctorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
+  const [authUser, setAuthUser] = useState(null); // ← get user for sidebar username
   const location = useLocation();
+  const navigate = useNavigate();
+
+  // fetch auth user for sidebar
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (mounted) setAuthUser(data.session?.user ?? null);
+    })();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (mounted) setAuthUser(session?.user ?? null);
+    });
+    return () => { mounted = false; subscription?.unsubscribe(); };
+  }, []);
 
   // desktop vs mobile
   useEffect(() => {
@@ -158,6 +173,17 @@ const DoctorLayout = () => {
   }, []);
 
   const sidebarX = isDesktop ? 0 : (sidebarOpen ? 0 : -SIDEBAR_W);
+
+  // Logout handler for sidebar button
+  const handleSidebarLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/");
+  };
+
+  const displayName =
+    authUser?.user_metadata?.username ??
+    authUser?.email?.split("@")[0] ??
+    "User";
 
   return (
     <div className="min-h-screen bg-sky-50">
@@ -200,19 +226,21 @@ const DoctorLayout = () => {
             <div className="flex flex-col justify-between h-full">
               <div>
                 {/* Brand in sidebar */}
-                
-
-                {/* User */}
-                <div className="p-6 flex items-center gap-4 border-b border-sky-700">
-                  <img
-                    src="https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=200&q=80"
-                    alt="Doctor avatar"
-                    className="w-12 h-12 rounded-full object-cover border-2 border-sky-500"
-                    loading="lazy"
-                  />
+                <div className="p-6 border-b border-sky-700 flex items-center gap-3">
+                  <div className="p-2 bg-sky-700 rounded-lg">
+                    <FaClinicMedical className="text-xl" />
+                  </div>
                   <div>
-                    <h3 className="font-semibold">Dr. Sarah Johnson</h3>
-                    <p className="text-sky-300 text-sm">Cardiologist</p>
+                    <h2 className="font-bold text-lg">MediCare Clinic</h2>
+                    <p className="text-sky-300 text-sm">Doctor Console</p>
+                  </div>
+                </div>
+
+                {/* User (username only; photo removed) */}
+                <div className="p-6 border-b border-sky-700">
+                  <div className="flex items-center gap-3">
+                    <FaUser className="text-xl" aria-hidden="true" />
+                    <h3 className="font-semibold">{displayName}</h3>
                   </div>
                 </div>
 
@@ -252,19 +280,12 @@ const DoctorLayout = () => {
                 </nav>
               </div>
 
-              {/* Footer actions */}
+              {/* Footer actions (Settings removed) */}
               <div className="p-4 border-t border-sky-700">
                 <button
                   className="flex items-center gap-4 px-4 py-3 rounded-xl text-sky-100 hover:bg-sky-800 hover:text-white w-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
                   type="button"
-                >
-                  <FaCog className="text-lg" />
-                  <span className="font-medium">Settings</span>
-                </button>
-                <button
-                  className="mt-2 flex items-center gap-4 px-4 py-3 rounded-xl text-sky-100 hover:bg-sky-800 hover:text-white w-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
-                  type="button"
-                  onClick={() => {/* hook your logout */}}
+                  onClick={handleSidebarLogout}
                 >
                   <FaSignOutAlt className="text-lg" />
                   <span className="font-medium">Logout</span>
