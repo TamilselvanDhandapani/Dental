@@ -288,7 +288,7 @@ const DoctorLayout = () => {
                   onClick={handleSidebarLogout}
                 >
                   <FaSignOutAlt className="text-lg" />
-                  <span className="font-medium">Logout</span>
+                  <span className="font-medium cursor-pointer">Logout</span>
                 </button>
               </div>
             </div>
