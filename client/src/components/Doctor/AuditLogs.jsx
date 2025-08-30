@@ -2,16 +2,23 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { getAuditRecent } from "../../utils/api";
 
-const ACTION_UI_TO_DB = {
-  Added: "INSERT",
-  Edited: "UPDATE",
-  Deleted: "DELETE",
+const ACTION_UI_TO_DB = { Added: "INSERT", Edited: "UPDATE", Deleted: "DELETE" };
+const ACTION_DB_TO_UI = { INSERT: "Added", UPDATE: "Edited", DELETE: "Deleted" };
+
+// Friendly names for known tables (fallback will title-case)
+const ENTITY_MAP = {
+  patients: "Patient",
+  medical_histories: "Medical History",
+  visits: "Visit",
 };
-const ACTION_DB_TO_UI = {
-  INSERT: "Added",
-  UPDATE: "Edited",
-  DELETE: "Deleted",
-};
+
+const titleCase = (s = "") =>
+  s
+    .toString()
+    .replace(/_/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 
 const AuditLogs = () => {
   const [items, setItems] = useState([]);
@@ -41,8 +48,7 @@ const AuditLogs = () => {
     try {
       const dbAction = actionUi === "All" ? undefined : ACTION_UI_TO_DB[actionUi];
       const r = await getAuditRecent({
-        // only pass action; no schema/table filters
-        action: dbAction,
+        action: dbAction, // we only filter by action now
         limit,
         offset,
       });
@@ -55,13 +61,11 @@ const AuditLogs = () => {
     }
   };
 
-  // Initial + whenever filters/pagination change
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionUi, limit, offset]);
 
-  // Reset page when action filter changes
   useEffect(() => {
     setOffset(0);
   }, [actionUi]);
@@ -74,23 +78,39 @@ const AuditLogs = () => {
     return `${base} bg-gray-100 text-gray-800`;
   };
 
+  const entityFromEvent = (ev) => {
+    const t = ev?.table_name || "";
+    return ENTITY_MAP[t] || titleCase(t || "Item");
+  };
+
   const Row = ({ ev }) => {
-    const [open, setOpen] = useState(false);
-    const friendly = ACTION_DB_TO_UI[ev.action] || ev.action;
+    const friendlyAction = ACTION_DB_TO_UI[ev.action] || ev.action;
+    const entity = entityFromEvent(ev);
+
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <div className="flex flex-col sm:flex-row sm:items-start gap-3 justify-between">
+          {/* Left: what happened */}
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className={badgeClass(ev.action)}>{friendly}</span>
-              {/* (No schema/table shown) */}
+              <span className={badgeClass(ev.action)}>{friendlyAction}</span>
+              <span className="text-sm font-semibold text-gray-900">
+                {entity}
+              </span>
+              {/* If you want a tiny reference, uncomment below */}
+              {/* {ev.row_id && (
+                <span className="text-xs text-gray-500">• Ref #{String(ev.row_id).slice(0, 8)}</span>
+              )} */}
             </div>
+
             <div className="mt-1 text-xs text-gray-500">
               By{" "}
               <span className="font-medium text-gray-700">
                 {ev.actor_email || ev.actor_id || "Unknown"}
               </span>
             </div>
+
+            {/* Optional: changed columns chips (kept concise) */}
             {Array.isArray(ev.changed_cols) && ev.changed_cols.length > 0 && (
               <div className="mt-2 flex flex-wrap gap-1">
                 {ev.changed_cols.map((c, i) => (
@@ -104,36 +124,17 @@ const AuditLogs = () => {
               </div>
             )}
           </div>
+
+          {/* Right: when */}
           <div className="text-right">
             <div className="text-xs text-gray-500">When</div>
             <div className="text-sm font-medium text-gray-800">
               {formatDateTime(ev.happened_at)}
             </div>
-            <button
-              onClick={() => setOpen((o) => !o)}
-              className="mt-2 text-xs text-indigo-600 hover:text-indigo-800"
-            >
-              {open ? "Hide details" : "View details"}
-            </button>
           </div>
         </div>
 
-        {open && (
-          <div className="mt-3 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1">Old Data</div>
-              <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-2 overflow-auto max-h-72">
-                {ev.old_data ? JSON.stringify(ev.old_data, null, 2) : "—"}
-              </pre>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-gray-600 mb-1">New Data</div>
-              <pre className="text-xs bg-gray-50 border border-gray-200 rounded p-2 overflow-auto max-h-72">
-                {ev.new_data ? JSON.stringify(ev.new_data, null, 2) : "—"}
-              </pre>
-            </div>
-          </div>
-        )}
+        {/* Details removed per request */}
       </div>
     );
   };
