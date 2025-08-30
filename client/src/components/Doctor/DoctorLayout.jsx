@@ -6,7 +6,7 @@ import { supabase } from "../../CreateClient"; // ← adjust if your path differ
 // Icons
 import {
   FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus, FaBars, FaTimes,
-  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine,
+  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine, FaHistory,   // ← added FaHistory
 } from "react-icons/fa";
 import { FaRegCalendarCheck } from "react-icons/fa6";
 
@@ -17,6 +17,7 @@ const navItems = [
   { to: "/doctor/followups",    label: "Follow-ups",    icon: FaCalendarAlt },
   { to: "/doctor/appointments", label: "Appointments",  icon: FaRegCalendarCheck },
   { to: "/doctor/analytics",    label: "Statistics",    icon: FaChartLine },
+  { to: "/doctor/audit",        label: "Audit Logs",    icon: FaHistory },        // ← NEW
 ];
 
 const SIDEBAR_W = 320;
@@ -69,7 +70,6 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
 
           {/* Right: auth (desktop) + mobile menu button on the far right */}
           <div className="flex items-center">
-            {/* Logged-out actions: show from sm+ to keep room for the menu on tiny screens */}
             {!user ? (
               <div className="hidden sm:flex space-x-2">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -95,7 +95,6 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
                 </motion.div>
               </div>
             ) : (
-              // Logged-in: hide username & logout on mobile; show on md+
               <div className="hidden md:flex items-center md:ml-6">
                 <div className="flex items-center">
                   <FaUser className="h-5 w-5 text-gray-500" />
@@ -138,11 +137,10 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
 const DoctorLayout = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
-  const [authUser, setAuthUser] = useState(null); // for sidebar username
+  const [authUser, setAuthUser] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
 
-  // fetch auth user for sidebar
   useEffect(() => {
     let mounted = true;
     (async () => {
@@ -155,7 +153,6 @@ const DoctorLayout = () => {
     return () => { mounted = false; subscription?.unsubscribe(); };
   }, []);
 
-  // desktop vs mobile
   useEffect(() => {
     const mql = window.matchMedia("(min-width: 1024px)");
     const onChange = (e) => setIsDesktop(e.matches);
@@ -168,20 +165,16 @@ const DoctorLayout = () => {
     };
   }, []);
 
-  // close on route change (mobile)
   useEffect(() => { if (!isDesktop) setSidebarOpen(false); }, [location.pathname, isDesktop]);
 
-  // close with Esc
   useEffect(() => {
     const onKey = (e) => e.key === "Escape" && setSidebarOpen(false);
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
-  // Slide from RIGHT on mobile, stay in place on desktop
   const sidebarX = isDesktop ? 0 : (sidebarOpen ? 0 : SIDEBAR_W);
 
-  // Logout handler for sidebar button
   const handleSidebarLogout = async () => {
     await supabase.auth.signOut();
     navigate("/");
@@ -194,12 +187,10 @@ const DoctorLayout = () => {
 
   return (
     <div className="min-h-screen bg-sky-50">
-      {/* Top navbar (controls sidebar on mobile) */}
       <TopNavbar onMenuClick={setSidebarOpen} menuOpen={sidebarOpen} />
 
       <div className="max-w-7xl mx-auto px-4 md:px-6">
         <div className="flex gap-6 py-6">
-          {/* Mobile overlay (below navbar) */}
           <AnimatePresence>
             {sidebarOpen && !isDesktop && (
               <motion.button
@@ -214,7 +205,6 @@ const DoctorLayout = () => {
             )}
           </AnimatePresence>
 
-          {/* Sidebar (RIGHT on mobile, LEFT sticky on desktop) */}
           <motion.aside
             id="doctor-sidebar"
             initial={false}
@@ -226,17 +216,14 @@ const DoctorLayout = () => {
               "h-[calc(100vh-4rem)]",
               "w-[320px]",
               "bg-gradient-to-b from-sky-900 to-sky-800 text-white",
-              "overflow-y-auto rounded-l-2xl lg:rounded-2xl", // rounded on the visible edge (left when docked on right)
-              // Positioning: right on mobile, left on desktop
+              "overflow-y-auto rounded-l-2xl lg:rounded-2xl",
               "right-0 lg:right-auto lg:left-0",
             ].join(" ")}
             aria-hidden={!isDesktop && !sidebarOpen}
           >
             <div className="flex flex-col justify-between h-full">
               <div>
-                {/* --- Brand removed from sidebar as requested --- */}
-
-                {/* User (username only; photo removed) */}
+                {/* User */}
                 <div className="p-6 border-b border-sky-700">
                   <div className="flex items-center gap-3">
                     <FaUser className="text-xl" aria-hidden="true" />
@@ -280,7 +267,7 @@ const DoctorLayout = () => {
                 </nav>
               </div>
 
-              {/* Footer actions (only Logout; Settings removed) */}
+              {/* Footer actions */}
               <div className="p-4 border-t border-sky-700">
                 <button
                   className="flex items-center gap-4 px-4 py-3 rounded-xl text-sky-100 hover:bg-sky-800 hover:text-white w-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"

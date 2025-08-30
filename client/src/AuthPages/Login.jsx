@@ -1,13 +1,19 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../CreateClient';
 import { motion } from 'framer-motion';
-import { FaTooth, FaEnvelope, FaLock, FaArrowRight, FaSignInAlt } from 'react-icons/fa';
+import { FaTooth, FaUser, FaLock, FaArrowRight } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
 import 'aos/dist/aos.css';
 
+const isEmail = (v = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
+const API_BASE =
+  (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) ||
+  (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_URL) ||
+  ''; // e.g. '' if your server routes are proxied, else 'https://api.yourdomain.com'
+
 const Login = () => {
   const [form, setForm] = useState({
-    email: '',
+    identifier: '', // username OR email
     password: ''
   });
   const [msg, setMsg] = useState({ text: '', type: '' });
@@ -18,9 +24,7 @@ const Login = () => {
   useEffect(() => {
     const checkSession = async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate('/doctor');
-      }
+      if (session) navigate('/doctor');
     };
     checkSession();
   }, [navigate]);
@@ -29,22 +33,51 @@ const Login = () => {
     e.preventDefault();
     setIsLoading(true);
     setMsg({ text: '', type: '' });
-    
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: form.email.toLowerCase().trim(),
-        password: form.password.trim()
-      });
 
-      if (error) throw error;
-      
-      // Redirect to dashboard after successful login
+    const identifier = form.identifier.trim();
+    const password = form.password.trim();
+
+    if (!identifier || !password) {
+      setMsg({ text: 'Please enter username/email and password.', type: 'error' });
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      if (isEmail(identifier)) {
+        // Email path: sign in directly with Supabase
+        const { error } = await supabase.auth.signInWithPassword({
+          email: identifier.toLowerCase(),
+          password
+        });
+        if (error) throw error;
+      } else {
+        // Username path: call backend, then set Supabase session on the client
+        const res = await fetch(`${API_BASE}/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: identifier, password })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.msg || 'Login failed');
+
+        const { token, refresh_token } = json;
+        if (!token || !refresh_token) {
+          throw new Error('Invalid auth response from server.');
+        }
+
+        const { error: setErr } = await supabase.auth.setSession({
+          access_token: token,
+          refresh_token
+        });
+        if (setErr) throw setErr;
+      }
+
       navigate('/doctor');
-      
     } catch (error) {
-      setMsg({ 
-        text: error.message || 'Login failed. Please try again.', 
-        type: 'error' 
+      setMsg({
+        text: error.message || 'Login failed. Please try again.',
+        type: 'error'
       });
     } finally {
       setIsLoading(false);
@@ -61,8 +94,8 @@ const Login = () => {
 
   const itemVariants = {
     hidden: { y: 20, opacity: 0 },
-    visible: { 
-      y: 0, 
+    visible: {
+      y: 0,
       opacity: 1,
       transition: { type: 'spring', stiffness: 100 }
     },
@@ -73,7 +106,7 @@ const Login = () => {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center "
+      className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center"
     >
       <motion.form
         onSubmit={onSubmit}
@@ -88,20 +121,21 @@ const Login = () => {
         </div>
 
         <div className="space-y-4">
-          {/* Email */}
+          {/* Username or Email */}
           <motion.div variants={itemVariants}>
-            <label className="block text-gray-700 mb-2">Email Address</label>
+            <label className="block text-gray-700 mb-2">Username or Email</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <FaEnvelope className="text-gray-400" />
+                <FaUser className="text-gray-400" />
               </div>
               <input
-                placeholder="your@email.com"
-                type="email"
+                placeholder="username or name@email.com"
+                type="text"
                 required
-                value={form.email}
-                onChange={(e) => setForm({...form, email: e.target.value})}
+                value={form.identifier}
+                onChange={(e) => setForm({ ...form, identifier: e.target.value })}
                 className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
+                autoComplete="username"
               />
             </div>
           </motion.div>
@@ -118,8 +152,9 @@ const Login = () => {
                 type="password"
                 required
                 value={form.password}
-                onChange={(e) => setForm({...form, password: e.target.value})}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
                 className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
+                autoComplete="current-password"
               />
             </div>
           </motion.div>
@@ -153,8 +188,8 @@ const Login = () => {
 
         {/* Forgot Password Link */}
         <motion.div variants={itemVariants} className="mt-4 text-center">
-          <Link 
-            to="/forgot-password" 
+          <Link
+            to="/forgot-password"
             className="text-teal-600 hover:text-teal-800 text-sm font-medium"
           >
             Forgot your password?
@@ -166,17 +201,14 @@ const Login = () => {
           <motion.div
             variants={itemVariants}
             className={`mt-4 p-3 rounded-lg text-center ${
-              msg.type === 'error' 
-                ? 'bg-red-100 text-red-700' 
+              msg.type === 'error'
+                ? 'bg-red-100 text-red-700'
                 : 'bg-teal-100 text-teal-700'
             }`}
           >
             {msg.text}
           </motion.div>
         )}
-
- 
-        
       </motion.form>
     </motion.div>
   );

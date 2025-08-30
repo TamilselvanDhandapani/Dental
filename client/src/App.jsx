@@ -20,6 +20,9 @@ import FollowUps from "./components/Doctor/FollowUps";
 import AppointmentDashboard from "./components/Doctor/Appointments";
 import MultiStepForm from "./components/Forms/MultiStepForm";
 
+// 🔥 NEW: Audit Logs component
+import AuditLogs from "./components/Doctor/AuditLogs";
+
 /* --------- Legacy path redirect helpers (preserve :params) --------- */
 const RedirectPatientsId = () => {
   const { id } = useParams();
@@ -62,6 +65,20 @@ const App = () => {
             <Route path="followups" element={<FollowUps />} />
             <Route path="analytics" element={<Analytics />} />
             <Route path="appointments" element={<AppointmentDashboard />} />
+
+            {/* 🔥 NEW: Audit Logs route */}
+            <Route
+              path="audit"
+              element={
+                <AuditLogs
+                  mode="recent"
+                  // You can pass defaults; component can still allow changing these via UI/filters
+                  tableSchema="public"
+                  tableName="patients"
+                  pageSize={25}
+                />
+              }
+            />
           </Route>
 
           {/* ---- Backward-compatible redirects for old paths ---- */}
@@ -72,6 +89,9 @@ const App = () => {
           <Route path="/followups" element={<Navigate to="/doctor/followups" replace />} />
           <Route path="/analytics" element={<Navigate to="/doctor/analytics" replace />} />
           <Route path="/appointments" element={<Navigate to="/doctor/appointments" replace />} />
+
+          {/* Optional: legacy redirect straight to doctor audit */}
+          <Route path="/audit" element={<Navigate to="/doctor/audit" replace />} />
 
           {/* Optional: default redirect */}
           <Route path="*" element={<Navigate to="/doctor" replace />} />

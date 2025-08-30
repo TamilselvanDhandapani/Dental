@@ -541,3 +541,78 @@ async function uploadImageKitFile(file, fileName, { folder = "/patients" } = {})
   }
   return up.json();
 }
+
+
+/* --------------------------- Audit & Provenance --------------------------- */
+
+/**
+ * Get recent audit events.
+ * @param {{ tableSchema?: string, tableName?: string, action?: 'INSERT'|'UPDATE'|'DELETE', limit?: number, offset?: number }} q
+ * Example:
+ *   await getAuditRecent({ tableSchema: 'public', tableName: 'patients', action: 'UPDATE', limit: 25 })
+ */
+export const getAuditRecent = (q = {}) => {
+  const query = {
+    ...(q.tableSchema ? { table_schema: q.tableSchema } : {}),
+    ...(q.tableName  ? { table_name:  q.tableName  } : {}),
+    ...(q.action     ? { action:      q.action     } : {}),
+    ...(Number.isFinite(q.limit)  ? { limit:  q.limit  } : {}),
+    ...(Number.isFinite(q.offset) ? { offset: q.offset } : {}),
+  };
+  return authedFetch(`/audit/recent`, { query });
+};
+
+/**
+ * Full audit history for a specific patient row.
+ * @param {string} patientId
+ * @param {{ limit?: number, offset?: number }} q
+ */
+export const getPatientAudit = (patientId, q = {}) => {
+  assertId(patientId, 'patientId');
+  const query = {
+    ...(Number.isFinite(q.limit)  ? { limit:  q.limit  } : {}),
+    ...(Number.isFinite(q.offset) ? { offset: q.offset } : {}),
+  };
+  return authedFetch(`/audit/patients/${patientId}`, { query });
+};
+
+/**
+ * Audit events performed by a specific actor (auth.uid).
+ * @param {string} actorId
+ * @param {{ limit?: number, offset?: number }} q
+ */
+export const getActorAudit = (actorId, q = {}) => {
+  assertId(actorId, 'actorId');
+  const query = {
+    ...(Number.isFinite(q.limit)  ? { limit:  q.limit  } : {}),
+    ...(Number.isFinite(q.offset) ? { offset: q.offset } : {}),
+  };
+  return authedFetch(`/audit/actors/${actorId}`, { query });
+};
+
+/**
+ * Generic row history for any audited table.
+ * @param {string} schema  e.g. 'public'
+ * @param {string} table   e.g. 'patients'
+ * @param {string} rowId   primary key value (as text/uuid)
+ * @param {{ limit?: number, offset?: number }} q
+ */
+export const getRowAudit = (schema, table, rowId, q = {}) => {
+  assertId(schema, 'schema');
+  assertId(table, 'table');
+  assertId(rowId, 'rowId');
+  const query = {
+    ...(Number.isFinite(q.limit)  ? { limit:  q.limit  } : {}),
+    ...(Number.isFinite(q.offset) ? { offset: q.offset } : {}),
+  };
+  return authedFetch(`/audit/${schema}/${table}/${rowId}`, { query });
+};
+
+/**
+ * Quick provenance for a patient: created_by, updated_by, and first/last audit actors.
+ * @param {string} patientId
+ */
+export const getPatientProvenance = (patientId) => {
+  assertId(patientId, 'patientId');
+  return authedFetch(`/patients/${patientId}/provenance`);
+};
