@@ -1,5 +1,6 @@
 // src/components/AuditLogs.jsx
 import React, { useEffect, useMemo, useState } from "react";
+import Select from "react-select";
 import { getAuditRecent } from "../../utils/api";
 
 const ACTION_UI_TO_DB = { Added: "INSERT", Edited: "UPDATE", Deleted: "DELETE" };
@@ -12,6 +13,34 @@ const ENTITY_MAP = {
   visits: "Visit",
 };
 
+const ACTION_OPTIONS = [
+  { value: "All", label: "All" },
+  { value: "Added", label: "Added" },
+  { value: "Edited", label: "Edited" },
+  { value: "Deleted", label: "Deleted" },
+];
+
+const PAGE_OPTIONS = [10, 25, 50, 100, 200].map((n) => ({ value: n, label: String(n) }));
+
+// Tailwind-friendly react-select base styles
+const selectStyles = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: 40,
+    borderColor: state.isFocused ? "#6366f1" : "#d1d5db",
+    boxShadow: state.isFocused ? "0 0 0 1px #6366f1" : "none",
+    "&:hover": { borderColor: state.isFocused ? "#6366f1" : "#9ca3af" },
+    borderRadius: 8,
+    cursor: "pointer",
+  }),
+  valueContainer: (base) => ({ ...base, padding: "0 0.5rem" }),
+  placeholder: (base) => ({ ...base, color: "#9ca3af" }),
+  input: (base) => ({ ...base, margin: 0, padding: 0 }),
+  singleValue: (base) => ({ ...base, margin: 0 }),
+  indicatorsContainer: (base) => ({ ...base, paddingRight: 6 }),
+  menuPortal: (base) => ({ ...base, zIndex: 9999 }),
+};
+
 const titleCase = (s = "") =>
   s
     .toString()
@@ -20,13 +49,53 @@ const titleCase = (s = "") =>
     .trim()
     .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
 
+/** Try to extract a human name from a row object */
+const nameFromRowData = (row = {}) => {
+  if (!row || typeof row !== "object") return null;
+  const fn =
+    row.first_name || row.firstName || row.firstname || row.given_name || row.givenName;
+  const ln =
+    row.last_name || row.lastName || row.lastname || row.family_name || row.familyName;
+  const full = [fn, ln].filter(Boolean).join(" ").trim();
+  if (full) return full;
+  return row.name || row.patient_name || null;
+};
+
+/** Find the patient name for an event (best effort) */
+const derivePatientName = (ev) => {
+  // For patients table, use the row itself
+  if (ev?.table_name === "patients") {
+    return nameFromRowData(ev.new_data) || nameFromRowData(ev.old_data) || null;
+  }
+
+  // Otherwise try common patterns inside the row or nested patient object
+  const src = ev?.new_data || ev?.old_data || {};
+  if (src && typeof src === "object") {
+    // Nested patient object?
+    if (src.patient && typeof src.patient === "object") {
+      const nm = nameFromRowData(src.patient);
+      if (nm) return nm;
+    }
+    // Sometimes APIs denormalize name fields on related rows
+    const nm2 = nameFromRowData(src);
+    if (nm2) return nm2;
+    // Fallback to short patient id if present
+    const pid = src.patient_id || src.patientId;
+    if (pid) return `#${String(pid).slice(0, 8)}…`;
+  }
+  return null;
+};
+
 const AuditLogs = () => {
   const [items, setItems] = useState([]);
   const [limit, setLimit] = useState(25);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [actionUi, setActionUi] = useState("All"); // All | Added | Edited | Deleted
+
+  // react-select selections
+  const [actionOpt, setActionOpt] = useState(ACTION_OPTIONS[0]); // default: All
+  const [pageOpt, setPageOpt] = useState(PAGE_OPTIONS.find((o) => o.value === 25) || PAGE_OPTIONS[1]);
 
   const formatDateTime = (v) => {
     if (!v) return "—";
@@ -46,9 +115,10 @@ const AuditLogs = () => {
     setLoading(true);
     setErr("");
     try {
+      const actionUi = actionOpt?.value || "All";
       const dbAction = actionUi === "All" ? undefined : ACTION_UI_TO_DB[actionUi];
       const r = await getAuditRecent({
-        action: dbAction, // we only filter by action now
+        action: dbAction,
         limit,
         offset,
       });
@@ -61,14 +131,21 @@ const AuditLogs = () => {
     }
   };
 
+  // Initial + whenever filters/pagination change
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [actionUi, limit, offset]);
+  }, [actionOpt, limit, offset]);
 
+  // Keep limit in sync with react-select page size
+  useEffect(() => {
+    setLimit(pageOpt?.value || 25);
+  }, [pageOpt]);
+
+  // Reset page when action filter changes
   useEffect(() => {
     setOffset(0);
-  }, [actionUi]);
+  }, [actionOpt]);
 
   const badgeClass = (dbAction) => {
     const base = "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium";
@@ -86,6 +163,7 @@ const AuditLogs = () => {
   const Row = ({ ev }) => {
     const friendlyAction = ACTION_DB_TO_UI[ev.action] || ev.action;
     const entity = entityFromEvent(ev);
+    const patientName = derivePatientName(ev);
 
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-4">
@@ -96,11 +174,8 @@ const AuditLogs = () => {
               <span className={badgeClass(ev.action)}>{friendlyAction}</span>
               <span className="text-sm font-semibold text-gray-900">
                 {entity}
+                {patientName ? ` (${patientName})` : ""}
               </span>
-              {/* If you want a tiny reference, uncomment below */}
-              {/* {ev.row_id && (
-                <span className="text-xs text-gray-500">• Ref #{String(ev.row_id).slice(0, 8)}</span>
-              )} */}
             </div>
 
             <div className="mt-1 text-xs text-gray-500">
@@ -109,9 +184,6 @@ const AuditLogs = () => {
                 {ev.actor_email || ev.actor_id || "Unknown"}
               </span>
             </div>
-
-            {/* Optional: changed columns chips (kept concise) */}
-           
           </div>
 
           {/* Right: when */}
@@ -147,36 +219,32 @@ const AuditLogs = () => {
           </div>
         </div>
 
-        {/* Filters: only Action + Page size */}
+        {/* Filters: Action (react-select) + Page size (react-select) */}
         <div className="bg-white rounded-xl border border-gray-200 p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs text-gray-600 mb-1">Show</label>
-              <select
-                value={actionUi}
-                onChange={(e) => setActionUi(e.target.value)}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                {["All", "Added", "Edited", "Deleted"].map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
+              <Select
+                options={ACTION_OPTIONS}
+                value={actionOpt}
+                onChange={(opt) => setActionOpt(opt)}
+                isClearable={false}
+                styles={selectStyles}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+              />
             </div>
             <div>
               <label className="block text-xs text-gray-600 mb-1">Page size</label>
-              <select
-                value={limit}
-                onChange={(e) => setLimit(Math.max(1, Number(e.target.value) || 25))}
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-              >
-                {[10, 25, 50, 100, 200].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
+              <Select
+                options={PAGE_OPTIONS}
+                value={pageOpt}
+                onChange={(opt) => setPageOpt(opt)}
+                isClearable={false}
+                styles={selectStyles}
+                menuPortalTarget={typeof document !== "undefined" ? document.body : null}
+                menuPosition="fixed"
+              />
             </div>
           </div>
         </div>
