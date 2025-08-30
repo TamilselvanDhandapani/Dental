@@ -17,7 +17,7 @@ const navItems = [
   { to: "/doctor/followups",    label: "Follow-ups",    icon: FaCalendarAlt },
   { to: "/doctor/appointments", label: "Appointments",  icon: FaRegCalendarCheck },
   { to: "/doctor/analytics",    label: "Statistics",    icon: FaChartLine },
-  { to: "/doctor/audit",        label: "Audit Logs",    icon: FaHistory },        // ← NEW
+  { to: "/doctor/audit",        label: "Patient Logs",  icon: FaHistory },        // ← NEW
 ];
 
 const SIDEBAR_W = 320;
