@@ -2,14 +2,21 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
+/** Supabase client bound to caller's JWT (Authorization header). */
 const supabaseForReq = (req) =>
   createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
     global: { headers: { Authorization: req.headers.authorization || '' } },
     auth: { persistSession: false },
   });
 
-const sbError = (res, error, status = 400) =>
-  res.status(status).json({ error: error?.message || String(error) });
+const sbError = (res, error, status = 400) => {
+  const msg = error?.message || String(error);
+  // Helpful hint if the schema cache/grants are the real issue
+  const hint = /relation .* does not exist|schema cache|permission denied|not found/i.test(msg)
+    ? ' (check that the view public.audit_event_log exists, is granted to authenticated/anon, and API cache is refreshed)'
+    : '';
+  return res.status(status).json({ error: msg + hint });
+};
 
 const getLimitOffset = (req, defLimit = 50, maxLimit = 200) => {
   const limit = Math.max(1, Math.min(Number(req.query.limit || defLimit), maxLimit));
@@ -20,6 +27,7 @@ const getLimitOffset = (req, defLimit = 50, maxLimit = 200) => {
 /**
  * GET /audit/recent?action=INSERT|UPDATE|DELETE&limit=50&offset=0
  * Uses the PUBLIC VIEW: public.audit_event_log
+ * No schema/table filters by design.
  */
 const getAuditRecent = async (req, res) => {
   try {
@@ -32,18 +40,19 @@ const getAuditRecent = async (req, res) => {
     const action = (req.query.action || '').toString().toUpperCase();
 
     let q = supabase
-      .from('audit_event_log') // <-- public view
-      .select('*')
+      .from('audit_event_log')                // public view
+      .select('*', { count: 'exact' })        // get count for pagination UI
       .order('happened_at', { ascending: false })
+      .order('id', { ascending: false })      // tie-breaker for stable sort
       .range(range[0], range[1]);
 
     if (action === 'INSERT' || action === 'UPDATE' || action === 'DELETE') {
       q = q.eq('action', action);
     }
 
-    const { data, error } = await q;
+    const { data, error, count } = await q;
     if (error) return sbError(res, error);
-    return res.json({ limit, items: data || [] });
+    return res.json({ limit, offset: range[0], total: count ?? null, items: data || [] });
   } catch (err) {
     return sbError(res, err, 500);
   }
@@ -62,17 +71,18 @@ const getPatientAudit = async (req, res) => {
     const { id } = req.params;
     const { limit, range } = getLimitOffset(req, 100);
 
-    const { data, error } = await supabase
-      .from('audit_event_log') // <-- public view
-      .select('*')
+    const { data, error, count } = await supabase
+      .from('audit_event_log')
+      .select('*', { count: 'exact' })
       .eq('table_schema', 'public')
       .eq('table_name', 'patients')
       .eq('row_id', String(id))
       .order('happened_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(range[0], range[1]);
 
     if (error) return sbError(res, error);
-    return res.json({ patientId: id, limit, items: data || [] });
+    return res.json({ patientId: id, limit, offset: range[0], total: count ?? null, items: data || [] });
   } catch (err) {
     return sbError(res, err, 500);
   }
@@ -91,15 +101,16 @@ const getActorAudit = async (req, res) => {
     const { actorId } = req.params;
     const { limit, range } = getLimitOffset(req);
 
-    const { data, error } = await supabase
-      .from('audit_event_log') // <-- public view
-      .select('*')
+    const { data, error, count } = await supabase
+      .from('audit_event_log')
+      .select('*', { count: 'exact' })
       .eq('actor_id', String(actorId))
       .order('happened_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(range[0], range[1]);
 
     if (error) return sbError(res, error);
-    return res.json({ actorId, limit, items: data || [] });
+    return res.json({ actorId, limit, offset: range[0], total: count ?? null, items: data || [] });
   } catch (err) {
     return sbError(res, err, 500);
   }
@@ -118,17 +129,18 @@ const getRowAudit = async (req, res) => {
     const { schema, table, rowId } = req.params;
     const { limit, range } = getLimitOffset(req, 100);
 
-    const { data, error } = await supabase
-      .from('audit_event_log') // <-- public view
-      .select('*')
+    const { data, error, count } = await supabase
+      .from('audit_event_log')
+      .select('*', { count: 'exact' })
       .eq('table_schema', String(schema))
       .eq('table_name', String(table))
       .eq('row_id', String(rowId))
       .order('happened_at', { ascending: false })
+      .order('id', { ascending: false })
       .range(range[0], range[1]);
 
     if (error) return sbError(res, error);
-    return res.json({ schema, table, rowId, limit, items: data || [] });
+    return res.json({ schema, table, rowId, limit, offset: range[0], total: count ?? null, items: data || [] });
   } catch (err) {
     return sbError(res, err, 500);
   }
@@ -154,24 +166,26 @@ const getPatientProvenance = async (req, res) => {
     if (pErr) return sbError(res, pErr);
 
     const { data: firstInsert, error: fErr } = await supabase
-      .from('audit_event_log') // <-- public view
+      .from('audit_event_log')
       .select('*')
       .eq('table_schema', 'public')
       .eq('table_name', 'patients')
       .eq('row_id', String(id))
       .eq('action', 'INSERT')
       .order('happened_at', { ascending: true })
+      .order('id', { ascending: true })
       .limit(1);
     if (fErr) return sbError(res, fErr);
 
     const { data: lastChange, error: lErr } = await supabase
-      .from('audit_event_log') // <-- public view
+      .from('audit_event_log')
       .select('*')
       .eq('table_schema', 'public')
       .eq('table_name', 'patients')
       .eq('row_id', String(id))
       .in('action', ['UPDATE', 'DELETE'])
       .order('happened_at', { ascending: false })
+      .order('id', { ascending: false })
       .limit(1);
     if (lErr) return sbError(res, lErr);
 
