@@ -39,7 +39,7 @@ const Login = () => {
       if (error) throw error;
       
       // Redirect to dashboard after successful login
-      navigate('/doctor/dashboard');
+      navigate('/doctor');
       
     } catch (error) {
       setMsg({ 
