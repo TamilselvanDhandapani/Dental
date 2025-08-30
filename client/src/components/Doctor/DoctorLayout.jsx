@@ -100,7 +100,7 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
                 <div className="flex items-center">
                   <FaUser className="h-5 w-5 text-gray-500" />
                   <span className="ml-2 text-sm font-medium text-gray-700">
-                    {displayName}
+                    Dr. {displayName}
                   </span>
                 </div>
                 <motion.button
@@ -119,7 +119,7 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
             {typeof onMenuClick === "function" && (
               <button
                 onClick={() => onMenuClick(!menuOpen)}
-                className="ml-2 p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 lg:hidden"
+                className="ml-2 p-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 lg:hidden cursor-pointer"
                 aria-label={menuOpen ? "Close sidebar" : "Open sidebar"}
                 aria-expanded={menuOpen}
                 aria-controls="doctor-sidebar"
@@ -240,7 +240,7 @@ const DoctorLayout = () => {
                 <div className="p-6 border-b border-sky-700">
                   <div className="flex items-center gap-3">
                     <FaUser className="text-xl" aria-hidden="true" />
-                    <h3 className="font-semibold">{displayName}</h3>
+                    <h3 className="font-semibold">Dr. {displayName}</h3>
                   </div>
                 </div>
 

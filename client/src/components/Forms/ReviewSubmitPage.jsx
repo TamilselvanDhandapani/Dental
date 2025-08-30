@@ -1,18 +1,17 @@
 // src/components/ReviewSubmitPage.jsx
 import React, { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom"; // ⬅️ add navigate for success modal actions
 import {
   createPatient,
   upsertMedicalHistory,
   createVisit,
-  uploadPatientPhoto,      // ✅ shared ImageKit uploader (server-side)
-  updatePatientPhotoUrl,   // ✅ persist final CDN URL to patient
+  uploadPatientPhoto,
+  updatePatientPhotoUrl,
 } from "../../utils/api";
 
 /* -------------------------------------------------------------------------
    Image URL helpers (no UI changes)
 ---------------------------------------------------------------------------*/
-// If you store only ImageKit filePath, we can form a display URL using the
-// public endpoint (e.g. https://ik.imagekit.io/your_id). Keep it optional.
 const IK_BASE =
   (typeof process !== "undefined" &&
     process.env &&
@@ -20,8 +19,6 @@ const IK_BASE =
     process.env.NEXT_PUBLIC_IMAGEKIT_URL_ENDPOINT.replace(/\/$/, "")) ||
   "";
 
-/** Prefer a direct URL; fall back to thumbnail; if only filePath is present and
- * we know the IK base, build a simple URL. */
 const pickIkDisplayUrl = (obj) => {
   if (!obj || typeof obj !== "object") return null;
   if (obj.url) return obj.url;
@@ -33,7 +30,6 @@ const pickIkDisplayUrl = (obj) => {
   return null;
 };
 
-/** When ImageField provides an object or a string, prefer its direct URL. */
 const getImageKitUrl = (photoLike) => {
   if (!photoLike) return null;
   if (typeof photoLike === "string") return photoLike;
@@ -122,7 +118,6 @@ const normalize16 = (arr) =>
     };
   });
 
-// Convert data URL → File (used if only preview is available)
 const MAX_PHOTO_MB = 5;
 const dataUrlToFile = (dataUrl, fallbackName = "patient-photo") => {
   try {
@@ -196,6 +191,8 @@ function renderToothFindings(findingsArr = [], jawLabel) {
    Component
 ---------------------------------------------------------------------------*/
 const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
+  const navigate = useNavigate();
+
   // ---- Shorthands ---------------------------------------------------------
   const profile = formData.patientProfile || {};
   const mh = formData.medicalHistory || {};
@@ -208,17 +205,14 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
   );
   const ageText = profile.age || calcAge(profile.dob);
 
-  // Support either shape: {rows[]} (old) or {procedures[]} (new)
   const procedureRows = Array.isArray(procs.rows)
     ? procs.rows
     : Array.isArray(procs.procedures)
     ? procs.procedures
     : [];
 
-  // Prefer formData.dentalExam, but support chiefComplaintExam key too
   const examData = formData.dentalExam || formData.chiefComplaintExam || {};
 
-  // Findings assembly
   const assembledFindings =
     examData.findings ||
     buildFindingsFromGrades(
@@ -281,7 +275,6 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
     [mh]
   );
 
-  // ---- Problem chips (for display) ---------------------------------------
   const probs = mh.problems || {};
   const PROBLEM_LABELS = {
     artificialValvesPacemaker: "Artificial Valves/Pacemakers",
@@ -315,7 +308,6 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
     );
   }
 
-  // Outstanding due?
   const hasDue =
     Number(procs?.summary?.due || 0) > 0 ||
     (Array.isArray(procedureRows) && procedureRows.some((r) => Number(r?.due || 0) > 0));
@@ -325,6 +317,10 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
   const [submitStep, setSubmitStep] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [confirmOpen, setConfirmOpen] = useState(false);
+
+  // ✅ Success modal state
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [createdIds, setCreatedIds] = useState({ patientId: null, visitId: null });
 
   // Build a File from available sources (legacy path)
   const getPhotoFileFromProfile = () => {
@@ -337,20 +333,15 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
     return null;
   };
 
-  // Prefer IK URL from either `photoIK` (new) or `photo` (alt)
   const getPhotoUrlFromProfile = () => {
-    // New flow from PatientProfileForm
     const ikFromPhotoIK = getImageKitUrl(profile.photoIK);
     if (ikFromPhotoIK) return ikFromPhotoIK;
-    // Alternate shape if a generic "photo" is present
     const ikFromPhoto = getImageKitUrl(profile.photo);
     if (ikFromPhoto) return ikFromPhoto;
-    // If a plain URL was kept
     if (profile.photoUrl) return profile.photoUrl;
     return null;
   };
 
-  // Open confirm modal with a minimal validation
   const openConfirm = () => {
     if (!examData.chiefComplaint || !examData.chiefComplaint.trim()) {
       setSubmitError("Chief complaint is required for the initial visit.");
@@ -370,7 +361,7 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
     try {
       let patientId = formData.patientId || profile.id || null;
       const photoFile = getPhotoFileFromProfile();
-      const directPhotoUrl = getPhotoUrlFromProfile(); // ← prefer ImageKit URL if present
+      const directPhotoUrl = getPhotoUrlFromProfile();
 
       const visitPayloadLocal = { ...visitPayload };
       const mhPayloadLocal = { ...mhPayload };
@@ -408,37 +399,33 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
           throw new Error("Could not determine new patient ID");
         }
 
-        // ---- Photo handling (ImageKit only)
         if (directPhotoUrl) {
           setSubmitStep("Saving photo URL…");
           await updatePatientPhotoUrl(patientId, directPhotoUrl);
-          // eslint-disable-next-line no-console
-          console.log("🖼️ Saved patient photo URL (direct):", directPhotoUrl, { patientId });
         } else if (photoFile) {
           setSubmitStep("Uploading photo to ImageKit…");
           const name = safeName(profile.firstName, profile.lastName) || "patient";
           const { url } = await uploadPatientPhoto(patientId, photoFile, {
-            folder: "/patients", // ← match front-end foldering
+            folder: "/patients",
             fileName: `${name}-photo`,
           });
-          if (url) {
-            await updatePatientPhotoUrl(patientId, url);
-            // eslint-disable-next-line no-console
-            console.log("🖼️ Saved patient photo URL (uploaded):", url, { patientId });
-          } else {
-            console.warn("ImageKit upload returned no URL", { patientId });
-          }
+          if (url) await updatePatientPhotoUrl(patientId, url);
         }
+
+        const newVisitId = created?.visit_id || created?.new_visit_id || null;
 
         setSubmitStep("Finalizing…");
         onSubmit?.({
           patientId,
-          visit: { id: created?.visit_id || created?.new_visit_id || null },
+          visit: { id: newVisitId },
         });
 
+        // ✅ open success modal
+        setCreatedIds({ patientId, visitId: newVisitId });
         setSubmitStep("All done!");
         setSubmitting(false);
         setConfirmOpen(false);
+        setSuccessOpen(true);
         return;
       }
 
@@ -449,26 +436,17 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
       setSubmitStep("Saving dental exam & procedures…");
       const savedVisit = await createVisit(patientId, visitPayloadLocal);
 
-      // ---- Photo handling (ImageKit only)
       if (directPhotoUrl) {
         setSubmitStep("Saving photo URL…");
         await updatePatientPhotoUrl(patientId, directPhotoUrl);
-        // eslint-disable-next-line no-console
-        console.log("🖼️ Saved patient photo URL (direct):", directPhotoUrl, { patientId });
       } else if (photoFile) {
         setSubmitStep("Uploading photo to ImageKit…");
         const name = safeName(profile.firstName, profile.lastName) || "patient";
         const { url } = await uploadPatientPhoto(patientId, photoFile, {
-          folder: "/patients", // ← match front-end foldering
+          folder: "/patients",
           fileName: `${name}-photo`,
         });
-        if (url) {
-          await updatePatientPhotoUrl(patientId, url);
-          // eslint-disable-next-line no-console
-          console.log("🖼️ Saved patient photo URL (uploaded):", url, { patientId });
-        } else {
-          console.warn("ImageKit upload returned no URL", { patientId });
-        }
+        if (url) await updatePatientPhotoUrl(patientId, url);
       }
 
       setSubmitStep("Finalizing…");
@@ -478,9 +456,12 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
         medicalHistory: { ok: true },
       });
 
+      // ✅ open success modal
+      setCreatedIds({ patientId, visitId: savedVisit?.id ?? null });
       setSubmitStep("All done!");
       setSubmitting(false);
       setConfirmOpen(false);
+      setSuccessOpen(true);
     } catch (err) {
       setSubmitError(err?.message || "Failed to submit record");
       console.error("Submit error:", err);
@@ -498,11 +479,10 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
   -----------------------------------------------------------------------*/
   const hasProcedures = Array.isArray(procedureRows) && procedureRows.length > 0;
 
-  // Choose best display URL for the photo (no UI change)
   const displayPhotoUrl =
     getImageKitUrl(profile.photoIK) ||
     getImageKitUrl(profile.photo) ||
-    profile.photoUrl || // expect this to already be an IK URL if set
+    profile.photoUrl ||
     profile.photoPreview ||
     null;
 
@@ -992,6 +972,73 @@ const ReviewSubmitPage = ({ formData = {}, onEdit, onSubmit, onBack }) => {
                 ) : (
                   "Confirm & Submit"
                 )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Success Modal */}
+      {successOpen && (
+        <div
+          className="no-print fixed inset-0 z-50 flex items-center justify-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="success-title"
+        >
+          <div className="absolute inset-0 bg-black/40" />
+          <div className="relative w-full max-w-md rounded-xl bg-white shadow-xl border border-gray-200 p-6 text-center">
+            <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-green-100 flex items-center justify-center">
+              <svg
+                className="h-7 w-7 text-green-600"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <path d="M20 6L9 17l-5-5" />
+              </svg>
+            </div>
+            <h3 id="success-title" className="text-lg font-semibold text-gray-800">
+              Patient added successfully
+            </h3>
+            <p className="mt-1 text-sm text-gray-600">
+              {(profile.firstName || "") + " " + (profile.lastName || "")}
+              {createdIds.patientId ? ` (ID: ${createdIds.patientId})` : ""}
+            </p>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-2 sm:justify-center">
+              {!!createdIds.patientId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSuccessOpen(false);
+                    navigate(`/doctor/patient/${createdIds.patientId}`);
+                  }}
+                  className="w-full sm:w-auto rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+                >
+                  View Patient
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setSuccessOpen(false);
+                  navigate("/doctor");
+                }}
+                className="w-full sm:w-auto rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+              >
+                Go to Patients
+              </button>
+              <button
+                type="button"
+                onClick={() => setSuccessOpen(false)}
+                className="w-full sm:w-auto rounded-lg px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50"
+              >
+                Close
               </button>
             </div>
           </div>

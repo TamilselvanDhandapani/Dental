@@ -13,7 +13,7 @@ const supabaseForReq = (req) =>
     auth: { persistSession: false },
   });
 
-// Admin client (server-side service role) — use ONLY for Storage signing
+// Admin client (server-side service role) — use ONLY for Storage signing/removal
 const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -519,8 +519,8 @@ const getPatient = async (req, res) => {
   }
 };
 
-// Update patient (owner-only via RLS) — store PATH; return fresh signed URL
-// ✅ Deletes previous Supabase object, and deletes previous ImageKit file if prevImageKitFileId provided.
+// Update patient — ANY authenticated user can edit (DB RLS must allow UPDATE to authenticated)
+// ✅ Cleans up previous storage object if photo changed; signs new photo URL
 const updatePatient = async (req, res) => {
   try {
     const auth = await requireAuth(req, res);
@@ -600,39 +600,48 @@ const updatePatient = async (req, res) => {
   }
 };
 
-// Delete patient (owner-only via RLS)
+// Delete patient — ONLY creator may delete (we enforce before calling DELETE)
 const deletePatient = async (req, res) => {
   try {
     const auth = await requireAuth(req, res);
     if (!auth) return;
-    const supabase = auth.supabase;
+    const { supabase, userId } = auth;
     const { id } = req.params;
 
-    // Grab photo path before deletion to clean up storage
+    // Read row (read-all is allowed) to check ownership and get old photo
     const { data: existing, error: exErr } = await supabase
       .from('patients')
-      .select('id, photo_url')
+      .select('id, created_by, photo_url')
       .eq('id', id)
       .single();
+
     if (exErr?.code === 'PGRST116' || (!existing && !exErr)) {
       return res.status(404).json({ error: 'Patient not found' });
     }
     if (exErr) return sbError(res, exErr);
-    const oldPath = urlToObjectPath(existing?.photo_url);
 
+    if (existing.created_by !== userId) {
+      return res.status(403).json({ error: 'Only the creator can delete this patient' });
+    }
+
+    const oldPath = urlToObjectPath(existing.photo_url);
+
+    // Add a second safety where clause on created_by (defense-in-depth)
     const { data, error } = await supabase
       .from('patients')
       .delete()
       .eq('id', id)
+      .eq('created_by', userId)
       .select('*')
       .single();
 
+    // If RLS or row mismatch blocked, data will be null
     if (error?.code === 'PGRST116' || (!data && !error)) {
-      return res.status(404).json({ error: 'Patient not found' });
+      return res.status(404).json({ error: 'Patient not found or not deletable' });
     }
     if (error) return sbError(res, error);
 
-    // Best-effort cleanup
+    // Best-effort cleanup for storage
     if (oldPath) {
       await deleteStorageObjectPath(oldPath);
     }
@@ -644,7 +653,7 @@ const deletePatient = async (req, res) => {
 };
 
 // Update ONLY the photo (JSON { photoUrl, prevImageKitFileId? } OR multipart "photo")
-// ✅ Deletes previous Supabase object, and previous ImageKit file if prevImageKitFileId provided.
+// ANY authenticated user can edit photo; creator-only rule applies only to DELETE
 const updatePhoto = async (req, res) => {
   try {
     const auth = await requireAuth(req, res);

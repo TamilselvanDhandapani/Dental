@@ -208,12 +208,30 @@ const PatientDetail = () => {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
+  // NEW: forbidden delete modal state
+  const [forbiddenModal, setForbiddenModal] = useState({ open: false, message: "" });
+
   // Photo edit
   const fileInputRef = useRef(null);
   const [photoErr, setPhotoErr] = useState("");
   const previewUrlRef = useRef(null); // to revoke blob URLs
 
   const profileRef = useRef(null);
+
+  // Helper: try to extract an HTTP status from different error shapes
+  const getHttpStatus = (error) =>
+    error?.status ??
+    error?.response?.status ??
+    error?.cause?.status ??
+    error?.statusCode ??
+    null;
+
+  // Helper: detect forbidden delete errors (403 or a specific message)
+  const isForbiddenDeleteError = (error) => {
+    const status = Number(getHttpStatus(error));
+    const msg = String(error?.message || "").toLowerCase();
+    return status === 403 || msg.includes("only the creator can delete");
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -451,7 +469,15 @@ const PatientDetail = () => {
       await deletePatient(id);
       navigate("/patients");
     } catch (error) {
-      setErr(error?.message || "Failed to delete patient");
+      // Show a friendly modal if the user is not allowed to delete
+      if (isForbiddenDeleteError(error)) {
+        setForbiddenModal({
+          open: true,
+          message: error?.message || "Only the creator can delete this patient.",
+        });
+      } else {
+        setErr(error?.message || "Failed to delete patient");
+      }
       setConfirmDelete(false);
     } finally {
       setDeleting(false);
@@ -1412,7 +1438,6 @@ const PatientDetail = () => {
                               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
                                 <div>
                                   <h4 className="font-semibold text-gray-900">{formatDateTime(v.visit_at)}</h4>
-                                 
                                 </div>
                                 <div className="flex items-center gap-2">
                                   <span
@@ -1586,6 +1611,47 @@ const PatientDetail = () => {
                 disabled={deleting}
               >
                 {deleting ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ---------- Forbidden (Not Allowed) Modal ---------- */}
+      {forbiddenModal.open && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/30"
+            onClick={() => setForbiddenModal({ open: false, message: "" })}
+          />
+          <div className="relative z-50 bg-white w-full max-w-md rounded-xl shadow-lg border border-gray-100 p-6">
+            <div className="flex items-start gap-3">
+              <div className="rounded-full bg-yellow-100 p-2">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-6 w-6 text-yellow-600"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M12 9v2m0 4h.01M9 2l.867 1.8a2 2 0 001.79 1.2h2.686a2 2 0 001.79-1.2L17 2m4 7a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-1">You can’t delete this patient</h3>
+                <p className="text-sm text-gray-600">
+                  {forbiddenModal.message || "Only the creator can delete this patient."}
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                onClick={() => setForbiddenModal({ open: false, message: "" })}
+                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium"
+              >
+                OK
               </button>
             </div>
           </div>

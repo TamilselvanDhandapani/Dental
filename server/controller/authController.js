@@ -38,7 +38,7 @@ const register = async (req, res) => {
       await supabaseAdmin.auth.admin.createUser({
         email: normalizedEmail,
         password,
-        email_confirm: true, // <-- key line: skip verification
+        email_confirm: true, // skip verification
         user_metadata: { username, phone, role: 'dentist' },
       });
 
@@ -79,23 +79,70 @@ const register = async (req, res) => {
 };
 
 /**
- * LOGIN (email/password)
- * Works immediately after register because the account is already confirmed.
+ * LOGIN (username or email + password)
+ * Resolves username → email from your `users` table, then signs in.
  */
 const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { username, email, password } = req.body;
 
   try {
-    if (!email || !password) {
-      return res.status(400).json({ msg: 'Email and password are required' });
+    if (!password) {
+      return res.status(400).json({ msg: 'Password is required' });
     }
-    const normalizedEmail = String(email).trim().toLowerCase();
+    if (!username && !email) {
+      return res.status(400).json({ msg: 'Username or email is required' });
+    }
 
+    // Resolve the identifier to an email address
+    let normalizedEmail = null;
+    if (email) {
+      const candidate = String(email).trim().toLowerCase();
+      if (!isValidEmail(candidate)) {
+        // allow username-like strings passed in "email" by mistake
+        // fall back to username lookup below
+      } else {
+        normalizedEmail = candidate;
+      }
+    }
+
+    if (!normalizedEmail) {
+      // Username path (case-insensitive lookup)
+      const uname = String(username || email).trim(); // support accidental field mixup
+      if (!uname) {
+        return res.status(400).json({ msg: 'Username or email is required' });
+      }
+
+      // Use ADMIN client so this works regardless of RLS on public routes
+      const { data: row, error: userErr } = await supabaseAdmin
+        .from('users')
+        .select('email, id, username')
+        .ilike('username', uname) // case-insensitive
+        .single();
+
+      if (userErr || !row?.email) {
+        // Avoid leaking which part was wrong
+        return res.status(400).json({ msg: 'Invalid username/email or password' });
+      }
+      normalizedEmail = String(row.email).trim().toLowerCase();
+    }
+
+    // Perform the actual Auth sign-in via email/password
     const { data, error } = await supabasePublic.auth.signInWithPassword({
       email: normalizedEmail,
       password,
     });
-    if (error) return res.status(400).json({ msg: error.message });
+    if (error) return res.status(400).json({ msg: 'Invalid username/email or password' });
+
+    // Optionally fetch username for convenience
+    let profileUsername = null;
+    try {
+      const { data: profile } = await supabaseAdmin
+        .from('users')
+        .select('username')
+        .eq('id', data.user?.id)
+        .single();
+      profileUsername = profile?.username ?? data.user?.user_metadata?.username ?? null;
+    } catch (_) {}
 
     return res.json({
       token: data.session?.access_token,
@@ -103,6 +150,7 @@ const login = async (req, res) => {
       user: {
         id: data.user?.id,
         email: data.user?.email,
+        username: profileUsername,
         role: data.user?.user_metadata?.role || 'dentist',
       },
     });
@@ -120,13 +168,25 @@ const verifyOtp = (_req, res) => {
 
 /**
  * FORGOT PASSWORD / RESET PASSWORD
- * Still supported; users can reset without ever having verified earlier.
+ * (Optional) You can also support username here by resolving to email first.
  */
 const forgotPassword = async (req, res) => {
-  const { email } = req.body;
+  const { email, username } = req.body;
   try {
-    if (!email) return res.status(400).json({ msg: 'Email is required' });
-    const normalizedEmail = String(email).trim().toLowerCase();
+    let normalizedEmail = email ? String(email).trim().toLowerCase() : null;
+
+    // Optional: allow username for password reset
+    if (!normalizedEmail && username) {
+      const { data: row, error } = await supabaseAdmin
+        .from('users')
+        .select('email')
+        .ilike('username', String(username).trim())
+        .single();
+      if (error || !row?.email) return res.status(400).json({ msg: 'Unknown user' });
+      normalizedEmail = String(row.email).trim().toLowerCase();
+    }
+
+    if (!normalizedEmail) return res.status(400).json({ msg: 'Email or username is required' });
 
     const { error } = await supabasePublic.auth.resetPasswordForEmail(
       normalizedEmail,
@@ -178,9 +238,9 @@ const resendOtp = (_req, res) =>
 
 module.exports = {
   register,
-  login,
+  login,        // ← now supports username or email
   verifyOtp,
-  forgotPassword,
+  forgotPassword, // ← now optionally supports username too
   resetPassword,
   resendOtp,
 };
