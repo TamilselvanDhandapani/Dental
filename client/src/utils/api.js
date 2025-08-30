@@ -614,5 +614,5 @@ export const getRowAudit = (schema, table, rowId, q = {}) => {
  */
 export const getPatientProvenance = (patientId) => {
   assertId(patientId, 'patientId');
-  return authedFetch(`/patients/${patientId}/provenance`);
+  return authedFetch(`/audit/patients/${patientId}/provenance`);
 };
