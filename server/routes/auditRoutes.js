@@ -10,19 +10,11 @@ const {
 
 const router = express.Router();
 
-// Recent events (optionally filter by schema/table/action)
+// Order matters: put the specific route before the generic :schema/:table/:rowId
 router.get('/recent', getAuditRecent);
-
-// Full history for a specific patient row
-router.get('/patients/:id', getPatientAudit);
-
-// Events by a specific actor (auth.uid)
-router.get('/actors/:actorId', getActorAudit);
-
-// Generic row-history for any audited table
-router.get('/:schema/:table/:rowId', getRowAudit);
-
-// Quick provenance for a patient (created_by, updated_by + audit first/last)
 router.get('/patients/:id/provenance', getPatientProvenance);
+router.get('/patients/:id', getPatientAudit);
+router.get('/actors/:actorId', getActorAudit);
+router.get('/:schema/:table/:rowId', getRowAudit);
 
 module.exports = router;

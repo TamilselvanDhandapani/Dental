@@ -189,7 +189,7 @@ const DoctorLayout = () => {
     <div className="min-h-screen bg-sky-50">
       <TopNavbar onMenuClick={setSidebarOpen} menuOpen={sidebarOpen} />
 
-      <div className="max-w-7xl mx-auto px-4 md:px-6">
+      <div className="w-full mx-auto px-4 md:px-6">
         <div className="flex gap-6 py-6">
           <AnimatePresence>
             {sidebarOpen && !isDesktop && (
