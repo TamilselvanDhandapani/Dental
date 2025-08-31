@@ -613,7 +613,7 @@ const CampSubmissions = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6 bg-gray-50 min-h-screen">
+    <div className=" min-h-screen">
       <div className="max-w-6xl mx-auto space-y-6">
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
