@@ -657,3 +657,44 @@ export const deleteCampSubmission = (id) => {
   assertId(id, "submissionId");
   return authedFetch(`/camp-submissions/${id}`, { method: "DELETE" });
 };
+
+
+/* ----------------------- Camp Submission Audit Logs ---------------------- */
+
+const ACTION_UI_TO_DB = { Added: "INSERT", Edited: "UPDATE", Deleted: "DELETE" };
+const normalizeAction = (a) => {
+  if (!a) return undefined;
+  const s = String(a).trim();
+  // accept DB values or UI labels
+  if (["INSERT", "UPDATE", "DELETE"].includes(s.toUpperCase())) return s.toUpperCase();
+  return ACTION_UI_TO_DB[s] || undefined;
+};
+
+/**
+ * List audit events for ALL camp submissions.
+ * @param {{ action?: 'INSERT'|'UPDATE'|'DELETE'|'Added'|'Edited'|'Deleted', limit?: number, offset?: number }} q
+ * Returns: { limit, offset, total?, items: [] }
+ */
+export const listCampSubmissionLogs = (q = {}) => {
+  const query = {
+    ...(normalizeAction(q.action) ? { action: normalizeAction(q.action) } : {}),
+    ...(Number.isFinite(q.limit) ? { limit: q.limit } : {}),
+    ...(Number.isFinite(q.offset) ? { offset: q.offset } : {}),
+  };
+  return authedFetch(`/camp-submissions/logs`, { query });
+};
+
+/**
+ * List audit events for a single submission by id.
+ * @param {string} id
+ * @param {{ limit?: number, offset?: number }} q
+ * Returns: { limit, offset, total?, items: [] }
+ */
+export const getCampSubmissionLogsById = (id, q = {}) => {
+  assertId(id, "submissionId");
+  const query = {
+    ...(Number.isFinite(q.limit) ? { limit: q.limit } : {}),
+    ...(Number.isFinite(q.offset) ? { offset: q.offset } : {}),
+  };
+  return authedFetch(`/camp-submissions/${id}/logs`, { query });
+};

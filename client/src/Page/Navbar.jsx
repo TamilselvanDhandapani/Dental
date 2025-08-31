@@ -3,6 +3,7 @@ import { supabase } from "../CreateClient";
 import { motion } from "framer-motion";
 import { FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus } from "react-icons/fa";
 import { Link, useNavigate } from "react-router-dom";
+import GDC from "../assets/gdc.png"
 
 const Navbar = ({ onMenuClick, menuOpen = false }) => {
   const [user, setUser] = useState(null);
@@ -43,9 +44,10 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
         <div className="flex items-center justify-between h-16">
           {/* Left: brand only */}
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center">
-            <FaTooth className="h-12 w-8 text-sky-500" />
+           
             <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
-              DentalCare
+              <img src={GDC} alt="Logo" className="w-16 h-16 inline-block mr-2" />
+              
             </Link>
           </motion.div>
 

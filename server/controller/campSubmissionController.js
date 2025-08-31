@@ -5,6 +5,10 @@ const { createClient } = require("@supabase/supabase-js");
 /** ⬇️ Change this if you renamed the table in Postgres */
 const TABLE = "user_submissions"; // or "camp_submissions" if you renamed it
 
+/** Views/tables for logs (from the schema I gave you) */
+const LOG_VIEW = "user_submissions_who";   // friendly "who verb whom" view
+// const LOG_TABLE = "user_submissions_log"; // (raw) if you ever need it
+
 /** Bind Supabase to the caller's JWT (Authorization header from the app). */
 const supabaseForReq = (req) =>
   createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
@@ -164,10 +168,90 @@ const deleteCampSubmission = async (req, res) => {
   }
 };
 
+/* ------------------------------------------------------------------------ */
+/*                            LOG ENDPOINTS                                 */
+/* ------------------------------------------------------------------------ */
+
+/**
+ * GET /camp-submissions/logs?limit=25&offset=0&action=Added|Edited|Deleted&q=alice
+ * Uses view public.user_submissions_who (columns: id, happened_at, action, verb, who, actor_email, actor_id, target_id, whom, old_row, new_row)
+ */
+const listCampSubmissionLogs = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    if (!req.headers.authorization) return res.status(401).json({ error: "Unauthorized" });
+
+    const { limit, range } = getLimitOffset(req);
+    const uiAction = (req.query.action || "").toString().trim(); // Added|Edited|Deleted
+    const q = (req.query.q || "").toString().trim();
+
+    const ACTION_UI_TO_DB = { Added: "INSERT", Edited: "UPDATE", Deleted: "DELETE" };
+    const dbAction = ACTION_UI_TO_DB[uiAction] || (["INSERT","UPDATE","DELETE"].includes(uiAction.toUpperCase()) ? uiAction.toUpperCase() : undefined);
+
+    let query = supabase
+      .from(LOG_VIEW)
+      .select("*", { count: "exact" })
+      .order("happened_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(range[0], range[1]);
+
+    if (dbAction) query = query.eq("action", dbAction);
+    if (q) {
+      query = query.or(
+        `who.ilike.%${q}%,whom.ilike.%${q}%,actor_email.ilike.%${q}%`
+      );
+    }
+
+    const { data, error, count } = await query;
+    if (error) return sbError(res, error);
+    return res.json({ limit, offset: range[0], total: count ?? null, items: data || [] });
+  } catch (err) {
+    return sbError(res, err, 500);
+  }
+};
+
+/**
+ * GET /camp-submissions/:id/logs?limit=25&offset=0&action=Added|Edited|Deleted
+ * Logs for a specific submission (target_id = :id)
+ */
+const getCampSubmissionLogsById = async (req, res) => {
+  try {
+    const supabase = supabaseForReq(req);
+    if (!req.headers.authorization) return res.status(401).json({ error: "Unauthorized" });
+
+    const { id } = req.params;
+    const { limit, range } = getLimitOffset(req);
+    const uiAction = (req.query.action || "").toString().trim();
+
+    const ACTION_UI_TO_DB = { Added: "INSERT", Edited: "UPDATE", Deleted: "DELETE" };
+    const dbAction = ACTION_UI_TO_DB[uiAction] || (["INSERT","UPDATE","DELETE"].includes(uiAction.toUpperCase()) ? uiAction.toUpperCase() : undefined);
+
+    let query = supabase
+      .from(LOG_VIEW)
+      .select("*", { count: "exact" })
+      .eq("target_id", String(id))
+      .order("happened_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(range[0], range[1]);
+
+    if (dbAction) query = query.eq("action", dbAction);
+
+    const { data, error, count } = await query;
+    if (error) return sbError(res, error);
+    return res.json({ targetId: id, limit, offset: range[0], total: count ?? null, items: data || [] });
+  } catch (err) {
+    return sbError(res, err, 500);
+  }
+};
+
 module.exports = {
   listCampSubmissions,
   getCampSubmission,
   createCampSubmission,
   updateCampSubmission,
   deleteCampSubmission,
+
+  // logs
+  listCampSubmissionLogs,
+  getCampSubmissionLogsById,
 };

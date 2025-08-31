@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { FaTooth, FaUser, FaLock, FaArrowRight } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
 import 'aos/dist/aos.css';
+import GDC from "../assets/gdc.png"
 
 const isEmail = (v = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 const API_BASE =
@@ -115,7 +116,7 @@ const Login = () => {
         className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full"
       >
         <div className="flex flex-col items-center mb-6">
-          <FaTooth className="text-4xl text-teal-500 mb-2" />
+          <img src={GDC} alt="Logo" className="mb-2 w-24 h-24" />
           <h2 className="text-2xl font-bold text-gray-800">Welcome Back</h2>
           <p className="text-gray-500 mt-1">Sign in to your dental account</p>
         </div>
