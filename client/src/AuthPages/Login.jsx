@@ -14,8 +14,8 @@ const API_BASE =
   '';
 
 const USERNAMES = [
-  "Natarajan","Kaviyaa","Swetha","Mythili","Premkumar","Vignesh",
-  "Srinath","Venkatesh","Kesavaraj","Yokesh",
+  "Natarajan@gdc.com","Kaviyaa@gdc.com","Swetha@gdc.com","Mythili@gdc.com","Premkumar@gdc.com","Vignesh@gdc.com",
+  "Srinath@gdc.com","Venkatesh@gdc.com","Kesavaraj@gdc.com","Yokesh@gdc.com",
 ];
 const USER_OPTIONS = USERNAMES.map(n => ({ value: n, label: n }));
 
