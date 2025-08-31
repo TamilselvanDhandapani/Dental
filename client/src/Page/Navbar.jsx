@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../CreateClient";
 import { motion } from "framer-motion";
 import {
@@ -10,27 +10,51 @@ import {
   FaTimes,
 } from "react-icons/fa";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import GDC from "../assets/gdc.png";
+import GDC from "../assets/gdc.png"; // make sure the file exists at src/assets/gdc.png
+
+function useImageFallback(primary, extras = []) {
+  const [idx, setIdx] = useState(0);
+  const sources = useMemo(() => {
+    const baseUrl =
+      (typeof import.meta !== "undefined" && import.meta.env && import.meta.env.BASE_URL) ||
+      "/";
+    const craPublic =
+      (typeof process !== "undefined" && process.env && process.env.PUBLIC_URL) || "";
+
+    const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+
+    return uniq([
+      primary,
+      `${baseUrl}gdc.png`,          // if you place gdc.png in /public
+      `${baseUrl}assets/gdc.png`,   // if you place gdc.png in /public/assets
+      `${craPublic}/gdc.png`,       // CRA PUBLIC_URL fallback
+      ...extras,
+    ]);
+  }, [primary, extras]);
+
+  const src = sources[idx] || null;
+  const onError = () => setIdx((i) => (i + 1 < sources.length ? i + 1 : i));
+  return { src, onError, exhausted: idx >= sources.length - 1 };
+}
 
 const Navbar = ({ onMenuClick, menuOpen = false }) => {
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
+  const { src: logoSrc, onError: onLogoError, exhausted } = useImageFallback(GDC);
+
   useEffect(() => {
     let mounted = true;
-
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (mounted) setUser(data.session?.user ?? null);
     })();
-
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (mounted) setUser(session?.user ?? null);
     });
-
     return () => {
       mounted = false;
       subscription?.unsubscribe();
@@ -38,7 +62,6 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
   }, []);
 
   useEffect(() => {
-    // Close mobile sidebar when navigating via top links
     if (typeof onMenuClick === "function" && menuOpen) onMenuClick(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
@@ -62,12 +85,19 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
             className="flex items-center"
           >
             <Link to="/doctor" className="inline-flex items-center">
-              <img
-                src={GDC}
-                alt="GDC"
-                className="h-10 w-auto mr-2"
-                draggable={false}
-              />
+              {logoSrc && !exhausted ? (
+                <img
+                  src={logoSrc}
+                  alt="GDC"
+                  className="h-10 w-auto mr-2 select-none"
+                  draggable={false}
+                  loading="eager"
+                  decoding="async"
+                  onError={onLogoError}
+                />
+              ) : (
+                <span className="text-lg font-bold text-gray-900 mr-2">GDC</span>
+              )}
             </Link>
           </motion.div>
 
