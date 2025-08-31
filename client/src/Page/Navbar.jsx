@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../CreateClient";
 import { motion } from "framer-motion";
-import { FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus } from "react-icons/fa";
-import { Link, useNavigate } from "react-router-dom";
-import GDC from "../assets/gdc.png"
+import {
+  FaUser,
+  FaSignOutAlt,
+  FaSignInAlt,
+  FaUserPlus,
+  FaBars,
+  FaTimes,
+} from "react-icons/fa";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import GDC from "../assets/gdc.png";
 
 const Navbar = ({ onMenuClick, menuOpen = false }) => {
   const [user, setUser] = useState(null);
@@ -12,14 +19,22 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
 
   useEffect(() => {
     let mounted = true;
+
     (async () => {
       const { data } = await supabase.auth.getSession();
       if (mounted) setUser(data.session?.user ?? null);
     })();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
       if (mounted) setUser(session?.user ?? null);
     });
-    return () => { mounted = false; subscription?.unsubscribe(); };
+
+    return () => {
+      mounted = false;
+      subscription?.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -34,26 +49,30 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
   };
 
   const displayName =
-    user?.user_metadata?.username ??
-    user?.email?.split("@")[0] ??
-    "User";
+    user?.user_metadata?.username ?? user?.email?.split("@")[0] ?? "User";
 
   return (
     <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/85 border-b border-gray-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Left: brand only */}
-          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center">
-           
-            <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
-              <img src={GDC} alt="Logo" className="w-24 h-18 inline-block mr-2" />
-              
+          {/* Left: brand */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center"
+          >
+            <Link to="/doctor" className="inline-flex items-center">
+              <img
+                src={GDC}
+                alt="GDC"
+                className="h-10 w-auto mr-2"
+                draggable={false}
+              />
             </Link>
           </motion.div>
 
-          {/* Right: auth (desktop) + mobile menu button on the far right */}
+          {/* Right: auth + mobile menu toggle */}
           <div className="flex items-center">
-            {/* Logged-out actions: show from sm+ to keep room for the menu on tiny screens */}
             {!user ? (
               <div className="hidden sm:flex space-x-2">
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -79,7 +98,6 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
                 </motion.div>
               </div>
             ) : (
-              // Logged-in: hide username & logout on mobile; show on md+
               <div className="hidden md:flex items-center md:ml-6">
                 <div className="flex items-center">
                   <FaUser className="h-5 w-5 text-gray-500" />
@@ -93,13 +111,14 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
                   onClick={handleLogout}
                   className="ml-4 p-2 rounded-full text-gray-500 hover:text-sky-600 hover:bg-gray-100 focus:outline-none"
                   title="Logout"
+                  aria-label="Logout"
                 >
                   <FaSignOutAlt className="h-5 w-5" />
                 </motion.button>
               </div>
             )}
 
-            {/* Mobile menu toggle on the RIGHT */}
+            {/* Mobile menu toggle */}
             {typeof onMenuClick === "function" && (
               <button
                 onClick={() => onMenuClick(!menuOpen)}
@@ -117,4 +136,5 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
     </nav>
   );
 };
+
 export default Navbar;
