@@ -1,23 +1,24 @@
 import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "../../CreateClient"; // ← adjust if your path differs
+import { supabase } from "../../CreateClient";
 
 // Icons
 import {
   FaUser, FaSignOutAlt, FaTooth, FaSignInAlt, FaUserPlus, FaBars, FaTimes,
-  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine, FaHistory,   // ← added FaHistory
+  FaUserInjured, FaUserFriends, FaCalendarAlt, FaChartLine, FaHistory, FaClipboardList, // ← added FaClipboardList
 } from "react-icons/fa";
 import { FaRegCalendarCheck } from "react-icons/fa6";
 
 /* --------------------------- Nav Items (Left Sidebar) --------------------------- */
 const navItems = [
-  { to: "/doctor",              label: "Patients",      icon: FaUserFriends, exact: true },
-  { to: "/doctor/form",         label: "New Patient",   icon: FaUserInjured },
-  { to: "/doctor/followups",    label: "Follow-ups",    icon: FaCalendarAlt },
-  { to: "/doctor/appointments", label: "Appointments",  icon: FaRegCalendarCheck },
-  { to: "/doctor/analytics",    label: "Statistics",    icon: FaChartLine },
-  { to: "/doctor/audit",        label: "Patient Logs",  icon: FaHistory },        // ← NEW
+  { to: "/doctor",                   label: "Patients",         icon: FaUserFriends, exact: true },
+  { to: "/doctor/form",              label: "New Patient",      icon: FaUserInjured },
+  { to: "/doctor/followups",         label: "Follow-ups",       icon: FaCalendarAlt },
+  { to: "/doctor/appointments",      label: "Appointments",     icon: FaRegCalendarCheck },
+  { to: "/doctor/analytics",         label: "Statistics",       icon: FaChartLine },
+  { to: "/doctor/audit",             label: "Patient Logs",     icon: FaHistory },
+  { to: "/doctor/camp-submissions",  label: "Camp Submissions", icon: FaClipboardList }, // ← NEW
 ];
 
 const SIDEBAR_W = 320;
@@ -41,10 +42,8 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
   }, []);
 
   useEffect(() => {
-    // Close mobile sidebar when navigating via top links
     if (typeof onMenuClick === "function" && menuOpen) onMenuClick(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
+  }, [location.pathname]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -60,7 +59,6 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
     <nav className="sticky top-0 z-50 backdrop-blur-md bg-white/85 border-b border-gray-200">
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
-          {/* Left: brand only */}
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center">
             <FaTooth className="h-12 w-8 text-sky-500" />
             <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
@@ -68,7 +66,6 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
             </Link>
           </motion.div>
 
-          {/* Right: auth (desktop) + mobile menu button on the far right */}
           <div className="flex items-center">
             {!user ? (
               <div className="hidden sm:flex space-x-2">
@@ -114,7 +111,6 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
               </div>
             )}
 
-            {/* Mobile menu toggle on the RIGHT */}
             {typeof onMenuClick === "function" && (
               <button
                 onClick={() => onMenuClick(!menuOpen)}
@@ -223,7 +219,6 @@ const DoctorLayout = () => {
           >
             <div className="flex flex-col justify-between h-full">
               <div>
-                {/* User */}
                 <div className="p-6 border-b border-sky-700">
                   <div className="flex items-center gap-3">
                     <FaUser className="text-xl" aria-hidden="true" />
@@ -231,7 +226,6 @@ const DoctorLayout = () => {
                   </div>
                 </div>
 
-                {/* Navigation */}
                 <nav className="p-4 space-y-2">
                   {navItems.map(({ to, label, icon: Icon, exact }) => (
                     <NavLink
@@ -267,7 +261,6 @@ const DoctorLayout = () => {
                 </nav>
               </div>
 
-              {/* Footer actions */}
               <div className="p-4 border-t border-sky-700">
                 <button
                   className="flex items-center gap-4 px-4 py-3 rounded-xl text-sky-100 hover:bg-sky-800 hover:text-white w-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/70"
@@ -281,7 +274,6 @@ const DoctorLayout = () => {
             </div>
           </motion.aside>
 
-          {/* Right content */}
           <main className="flex-1">
             <motion.div
               initial={{ opacity: 0, y: 20 }}

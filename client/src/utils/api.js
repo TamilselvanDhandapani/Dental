@@ -616,3 +616,44 @@ export const getPatientProvenance = (patientId) => {
   assertId(patientId, 'patientId');
   return authedFetch(`/audit/patients/${patientId}/provenance`);
 };
+
+
+/* --------------------------- Camp Submissions ---------------------------- */
+/**
+ * List submissions with optional search/sort/pagination.
+ * @param {{ q?: string, limit?: number, offset?: number, sort?: string }} params
+ *   - q: fuzzy search over name/email/institution
+ *   - limit/offset: pagination
+ *   - sort: "<column>.<asc|desc>" (default: "created_at.desc")
+ */
+export const listCampSubmissions = (params = {}) => {
+  const query = {
+    ...(params.q ? { q: params.q } : {}),
+    ...(Number.isFinite(params.limit) ? { limit: params.limit } : {}),
+    ...(Number.isFinite(params.offset) ? { offset: params.offset } : {}),
+    ...(params.sort ? { sort: params.sort } : {}),
+  };
+  return authedFetch("/camp-submissions", { query });
+};
+
+/** Get a single submission by id */
+export const getCampSubmission = (id) => {
+  assertId(id, "submissionId");
+  return authedFetch(`/camp-submissions/${id}`);
+};
+
+/** Create a new submission */
+export const createCampSubmission = (data) =>
+  authedFetch("/camp-submissions", { method: "POST", body: data });
+
+/** Patch/update a submission */
+export const updateCampSubmission = (id, data) => {
+  assertId(id, "submissionId");
+  return authedFetch(`/camp-submissions/${id}`, { method: "PATCH", body: data });
+};
+
+/** Delete a submission (RLS only allows creator to delete) */
+export const deleteCampSubmission = (id) => {
+  assertId(id, "submissionId");
+  return authedFetch(`/camp-submissions/${id}`, { method: "DELETE" });
+};

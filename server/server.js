@@ -75,6 +75,7 @@ app.use('/api/medicalhistory', require('./routes/medicalHistoryRoutes'));
 app.use('/api/analytics', require('./routes/analyticsRoutes'));
 app.use('/api/appointments', require('./routes/appointmentsRoutes'));
 app.use('/api/audit', require('./routes/auditRoutes'));
+app.use('/api/camp-submissions', require('./routes/campSubmissionRoutes'));
 
 /* 4.5) 404 */
 app.use((req, res) => {
