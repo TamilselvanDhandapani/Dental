@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { supabase } from "../../CreateClient";
+import GDC from "../../assets/gdc.png"; // make sure the file exists at src/assets/gdc.png
 
 // Icons
 import {
@@ -60,9 +61,9 @@ const TopNavbar = ({ onMenuClick, menuOpen = false }) => {
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center">
-            <FaTooth className="h-12 w-8 text-sky-500" />
+           
             <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
-              DentalCare
+              <img src={GDC} alt="GDC" className="h-14 w-auto" />
             </Link>
           </motion.div>
 
