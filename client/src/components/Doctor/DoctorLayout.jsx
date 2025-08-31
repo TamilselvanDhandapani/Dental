@@ -280,7 +280,7 @@ const DoctorLayout = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className="bg-white rounded-2xl shadow-sm p-4 md:p-6 border border-gray-100"
+              className="bg-white rounded-2xl shadow-sm border border-gray-100"
             >
               <Outlet />
             </motion.div>

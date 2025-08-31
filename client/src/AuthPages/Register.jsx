@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { supabase } from '../CreateClient';
 import { motion } from 'framer-motion';
-import { FaTooth, FaUser, FaEnvelope, FaLock, FaPhoneAlt, FaSignInAlt } from 'react-icons/fa';
+import { FaTooth, FaUser, FaEnvelope, FaLock, FaPhoneAlt, FaSignInAlt, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
 import 'aos/dist/aos.css';
 
@@ -13,6 +13,7 @@ const Register = () => {
     phone: '',
     role: 'dentist',
   });
+  const [showPwd, setShowPwd] = useState(false); // ← show/hide toggle
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(false);
 
@@ -38,7 +39,6 @@ const Register = () => {
             phone: phone.trim(),
             role,
           },
-          // 🔑 This is the important change
           emailRedirectTo: verifyRedirect,
         },
       });
@@ -50,6 +50,7 @@ const Register = () => {
         type: 'success',
       });
       setForm({ email: '', password: '', username: '', phone: '', role: 'dentist' });
+      setShowPwd(false);
     } catch (error) {
       setMsg({
         text: error.message || 'Registration failed. Please try again.',
@@ -123,6 +124,7 @@ const Register = () => {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
+                autoComplete="email"
               />
             </div>
           </motion.div>
@@ -140,11 +142,12 @@ const Register = () => {
                 value={form.phone}
                 onChange={(e) => setForm({ ...form, phone: e.target.value })}
                 className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
+                autoComplete="tel"
               />
             </div>
           </motion.div>
 
-          {/* Password */}
+          {/* Password + Show/Hide */}
           <motion.div variants={itemVariants}>
             <label className="block text-gray-700 mb-2">Password *</label>
             <div className="relative">
@@ -153,13 +156,24 @@ const Register = () => {
               </div>
               <input
                 placeholder="At least 6 characters"
-                type="password"
+                type={showPwd ? 'text' : 'password'}
                 required
                 minLength={6}
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
+                className="w-full pl-10 pr-12 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
+                autoComplete="new-password"
               />
+              <button
+                type="button"
+                onClick={() => setShowPwd((v) => !v)}
+                aria-label={showPwd ? 'Hide password' : 'Show password'}
+                aria-pressed={showPwd}
+                title={showPwd ? 'Hide password' : 'Show password'}
+                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-500 hover:text-gray-700 focus:outline-none"
+              >
+                {showPwd ? <FaEyeSlash /> : <FaEye />}
+              </button>
             </div>
           </motion.div>
         </div>
@@ -218,7 +232,7 @@ const Register = () => {
 
         <motion.div variants={itemVariants} className="mt-4 text-center text-gray-500">
           Already have an account?{' '}
-          <Link to="/" className="text-teal-600 hover:text-teal-800 font-medium flex items-center justify-center">
+          <Link to="/" className="text-teal-600 hover:text-teal-800 font-medium inline-flex items-center">
             <FaSignInAlt className="mr-1" /> Sign In
           </Link>
         </motion.div>

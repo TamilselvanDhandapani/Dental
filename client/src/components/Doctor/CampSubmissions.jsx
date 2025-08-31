@@ -1,16 +1,15 @@
 // src/components/CampSubmissions.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Select from "react-select";
-import { FiEdit, FiTrash2, FiRefreshCw, FiPlus, FiSearch } from "react-icons/fi";
+import { FiEdit, FiTrash2, FiRefreshCw, FiPlus, FiSearch, FiChevronDown, FiChevronUp } from "react-icons/fi";
 import {
   listCampSubmissions,
   createCampSubmission,
   updateCampSubmission,
   deleteCampSubmission,
-  // ⬇️ NEW: use the two camp logs APIs
   listCampSubmissionLogs,
   getCampSubmissionLogsById,
-} from "../../utils/api"; // adjust path if needed
+} from "../../utils/api";
 
 /* ------------------------------- Helpers -------------------------------- */
 
@@ -154,11 +153,11 @@ const SubmissionForm = ({
           {err}
         </div>
       )}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Name *</label>
           <input
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Full name"
@@ -169,7 +168,7 @@ const SubmissionForm = ({
           <label className="block text-sm font-medium text-gray-700 mb-1">DOB</label>
           <input
             type="date"
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={dob || ""}
             onChange={(e) => setDob(e.target.value)}
           />
@@ -178,7 +177,7 @@ const SubmissionForm = ({
           <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
           <input
             type="email"
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={email || ""}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="name@example.com"
@@ -187,7 +186,7 @@ const SubmissionForm = ({
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
           <input
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={phone || ""}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="9876543210"
@@ -196,7 +195,7 @@ const SubmissionForm = ({
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Institution</label>
           <input
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={institution || ""}
             onChange={(e) => setInstitution(e.target.value)}
             placeholder="City Hospital"
@@ -218,10 +217,10 @@ const SubmissionForm = ({
             isClearable
           />
         </div>
-        <div className="md:col-span-2">
+        <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Comments</label>
           <textarea
-            className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             rows={3}
             value={comments || ""}
             onChange={(e) => setComments(e.target.value)}
@@ -235,7 +234,7 @@ const SubmissionForm = ({
           type="submit"
           disabled={submitting}
           className={cls(
-            "px-5 py-2.5 rounded-lg text-white font-medium flex items-center gap-2",
+            "w-full sm:w-auto px-5 py-3 rounded-lg text-white font-medium flex items-center justify-center gap-2",
             submitting ? "bg-blue-400 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"
           )}
         >
@@ -267,12 +266,12 @@ const Modal = ({ open, onClose, title, children, footer }) => {
         aria-hidden="true"
         onClick={onClose}
       />
-      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-200 bg-white">
+      <div className="relative w-full max-w-2xl bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden mx-2 sm:mx-0">
+        <div className="px-4 sm:px-6 py-4 border-b border-gray-200 bg-white">
           <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
         </div>
-        <div className="p-6 max-h-[70vh] overflow-y-auto">{children}</div>
-        {footer && <div className="px-6 py-4 border-t border-gray-200 bg-gray-50">{footer}</div>}
+        <div className="p-4 sm:p-6 max-h-[70vh] overflow-y-auto">{children}</div>
+        {footer && <div className="px-4 sm:px-6 py-4 border-t border-gray-200 bg-gray-50">{footer}</div>}
       </div>
     </div>
   );
@@ -285,16 +284,16 @@ const ConfirmDeleteModal = ({ open, onCancel, onConfirm, item, loading }) => {
       onClose={onCancel}
       title="Delete submission?"
       footer={
-        <div className="flex justify-end gap-3">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button 
-            className="px-4 py-2.5 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors" 
+            className="flex-1 px-4 py-3 rounded-lg border border-gray-300 text-gray-700 font-medium hover:bg-gray-50 transition-colors" 
             onClick={onCancel} 
             disabled={loading}
           >
             Cancel
           </button>
           <button
-            className="px-4 py-2.5 rounded-lg text-white font-medium bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 transition-colors flex items-center gap-2"
+            className="flex-1 px-4 py-3 rounded-lg text-white font-medium bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300 transition-colors flex items-center justify-center gap-2"
             onClick={onConfirm}
             disabled={loading}
           >
@@ -397,9 +396,9 @@ const AuditLogsPanel = () => {
 
   return (
     <div className="space-y-4">
-      <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
+      <div className="bg-white p-4 sm:p-5 rounded-xl border border-gray-200 shadow-sm">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="sm:col-span-2 lg:col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Show</label>
             <Select
               classNamePrefix="rs"
@@ -409,7 +408,7 @@ const AuditLogsPanel = () => {
               onChange={(opt) => setActionOpt(opt || ACTION_OPTIONS[0])}
             />
           </div>
-          <div>
+          <div className="sm:col-span-2 lg:col-span-1">
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Submission ID (optional)</label>
             <input
               className="w-full border border-gray-300 rounded-lg px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -435,7 +434,7 @@ const AuditLogsPanel = () => {
           <div className="flex items-end">
             <button
               onClick={load}
-              className="px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+              className="w-full px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center justify-center gap-2"
               disabled={loading}
             >
               <FiRefreshCw className={loading ? "animate-spin" : ""} />
@@ -468,25 +467,25 @@ const AuditLogsPanel = () => {
               {items.map((ev) => (
                 <div
                   key={`${ev.id}-${ev.happened_at}`}
-                  className="rounded-lg border border-gray-200 bg-white p-4 flex items-center justify-between transition-colors hover:bg-gray-50"
+                  className="rounded-lg border border-gray-200 bg-white p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between transition-colors hover:bg-gray-50"
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1 mb-2 sm:mb-0">
                     <div className="flex items-center gap-2">
                       <span className={cls("px-2.5 py-1 rounded-full text-xs font-medium", badge(ev.action))}>
                         {ACTION_DB_TO_UI[ev.action] || ev.action}
                       </span>
-                      <span className="text-sm text-gray-700">
+                      <span className="text-sm text-gray-700 truncate">
                         Camp Submission{ev.row_id ? ` • ${String(ev.row_id).slice(0, 8)}` : ""}
                       </span>
                     </div>
-                    <div className="mt-1 text-xs text-gray-500">
+                    <div className="mt-1 text-xs text-gray-500 truncate">
                       By{" "}
                       <span className="font-medium text-gray-700">
                         {ev.actor_email || ev.actor_id || "Unknown"}
                       </span>
                     </div>
                   </div>
-                  <div className="text-right text-sm text-gray-600">
+                  <div className="text-sm text-gray-600 self-end sm:self-auto">
                     {formatDateTime(ev.happened_at)}
                   </div>
                 </div>
@@ -494,19 +493,19 @@ const AuditLogsPanel = () => {
             </div>
           )}
 
-          <div className="flex items-center justify-between pt-4">
+          <div className="flex flex-col sm:flex-row items-center justify-between pt-4 gap-4">
             <div className="text-sm text-gray-500">Showing up to {limit} events</div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
               <button
                 onClick={() => setOffset((o) => Math.max(0, o - limit))}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="flex-1 sm:flex-none px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                 disabled={loading || offset === 0}
               >
                 Previous
               </button>
               <button
                 onClick={() => setOffset((o) => o + limit)}
-                className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+                className="flex-1 sm:flex-none px-4 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                 disabled={loading || items.length < limit}
               >
                 Next
@@ -514,6 +513,72 @@ const AuditLogsPanel = () => {
             </div>
           </div>
         </>
+      )}
+    </div>
+  );
+};
+
+/* ----------------------------- Mobile Table Row -------------------------- */
+
+const MobileTableRow = ({ row, onEdit, onDelete }) => {
+  const [expanded, setExpanded] = useState(false);
+  
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg overflow-hidden mb-3">
+      <div 
+        className="p-4 flex justify-between items-center cursor-pointer"
+        onClick={() => setExpanded(!expanded)}
+      >
+        <div className="flex-1 min-w-0">
+          <div className="font-medium text-gray-900 truncate">{row.name}</div>
+          <div className="text-sm text-gray-500 truncate">{row.email || "—"}</div>
+        </div>
+        <div className="flex items-center gap-2 ml-2">
+          <button
+            className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
+            title="Edit"
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(row);
+            }}
+          >
+            <FiEdit />
+          </button>
+          <button
+            className="p-2 rounded-lg text-rose-600 hover:bg-rose-50 transition-colors"
+            title="Delete"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(row);
+            }}
+          >
+            <FiTrash2 />
+          </button>
+          <div className="text-gray-400">
+            {expanded ? <FiChevronUp /> : <FiChevronDown />}
+          </div>
+        </div>
+      </div>
+      
+      {expanded && (
+        <div className="px-4 pb-4 pt-2 border-t border-gray-100">
+          <div className="grid grid-cols-2 gap-2 text-sm">
+            <div className="text-gray-500">DOB:</div>
+            <div className="text-gray-700">{row.dob || "—"}</div>
+            
+            <div className="text-gray-500">Phone:</div>
+            <div className="text-gray-700">{row.phone || "—"}</div>
+            
+            <div className="text-gray-500">Institution:</div>
+            <div className="text-gray-700">{row.institution || "—"}</div>
+            
+            <div className="text-gray-500">Type:</div>
+            <div className="text-gray-700">{row.institution_type || row.institutionType || "—"}</div>
+            
+            <div className="text-gray-500">Created:</div>
+            <div className="text-gray-700">{formatDateTime(row.created_at)}</div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -613,8 +678,8 @@ const CampSubmissions = () => {
   };
 
   return (
-    <div className=" min-h-screen">
-      <div className="max-w-6xl mx-auto space-y-6">
+    <div className="min-h-screen bg-gray-50 py-4">
+      <div className="max-w-6xl mx-auto px-2 sm:px-4 space-y-6">
         {/* Tabs */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
           <div className="flex flex-wrap border-b border-gray-200">
@@ -623,7 +688,7 @@ const CampSubmissions = () => {
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 className={cls(
-                  "px-5 py-3 text-sm font-medium border-b-2 transition-colors",
+                  "flex-1 sm:flex-none px-3 py-3 text-sm font-medium border-b-2 transition-colors min-w-0",
                   tab === t.key
                     ? "border-blue-500 text-blue-600 bg-blue-50"
                     : "border-transparent text-gray-600 hover:text-gray-800 hover:bg-gray-50"
@@ -634,7 +699,7 @@ const CampSubmissions = () => {
             ))}
           </div>
 
-          <div className="p-5 sm:p-6">
+          <div className="p-4 sm:p-6">
             {tab === "form" && (
               <>
                 <h2 className="text-xl font-semibold text-gray-800 mb-4">Add New Submission</h2>
@@ -646,7 +711,7 @@ const CampSubmissions = () => {
               <>
                 <div className="flex flex-col sm:flex-row gap-4 sm:items-center sm:justify-between mb-5">
                   <h2 className="text-xl font-semibold text-gray-800">Submissions</h2>
-                  <div className="flex gap-2">
+                  <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                     <div className="relative">
                       <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                       <input
@@ -656,31 +721,33 @@ const CampSubmissions = () => {
                           setQ(e.target.value);
                         }}
                         placeholder="Search name/email/institution…"
-                        className="pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full sm:w-64"
+                        className="pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full"
                       />
                     </div>
-                    <select
-                      value={limit}
-                      onChange={(e) => {
-                        setOffset(0);
-                        setLimit(Math.max(1, Number(e.target.value) || 10));
-                      }}
-                      className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      {[10, 20, 50, 100].map((n) => (
-                        <option key={n} value={n}>
-                          {n}/page
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={loadList}
-                      disabled={loadingList}
-                      className="px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
-                    >
-                      <FiRefreshCw className={loadingList ? "animate-spin" : ""} />
-                      {loadingList ? "Refreshing…" : "Refresh"}
-                    </button>
+                    <div className="flex gap-2">
+                      <select
+                        value={limit}
+                        onChange={(e) => {
+                          setOffset(0);
+                          setLimit(Math.max(1, Number(e.target.value) || 10));
+                        }}
+                        className="flex-1 border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      >
+                        {[10, 20, 50, 100].map((n) => (
+                          <option key={n} value={n}>
+                            {n}/page
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={loadList}
+                        disabled={loadingList}
+                        className="px-4 py-2.5 rounded-lg border border-gray-300 bg-white text-gray-700 font-medium hover:bg-gray-50 transition-colors flex items-center gap-2"
+                      >
+                        <FiRefreshCw className={loadingList ? "animate-spin" : ""} />
+                        {loadingList ? "Refreshing…" : "Refresh"}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -690,7 +757,35 @@ const CampSubmissions = () => {
                   </div>
                 )}
 
-                <div className="overflow-auto border border-gray-200 rounded-xl shadow-sm">
+                {/* Mobile View */}
+                <div className="block sm:hidden">
+                  {loadingList ? (
+                    <div className="p-8 rounded-xl border border-gray-200 bg-white text-center text-gray-500">
+                      <div className="flex justify-center items-center">
+                        <FiRefreshCw className="animate-spin mr-2" />
+                        Loading…
+                      </div>
+                    </div>
+                  ) : rows.length === 0 ? (
+                    <div className="p-8 rounded-xl border border-gray-200 bg-white text-center text-gray-500">
+                      No records found.
+                    </div>
+                  ) : (
+                    <div>
+                      {rows.map((r) => (
+                        <MobileTableRow 
+                          key={r.id} 
+                          row={r} 
+                          onEdit={startEdit}
+                          onDelete={confirmDelete}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Desktop View */}
+                <div className="hidden sm:block overflow-auto border border-gray-200 rounded-xl shadow-sm">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
@@ -723,11 +818,11 @@ const CampSubmissions = () => {
                       ) : (
                         rows.map((r) => (
                           <tr key={r.id} className="hover:bg-gray-50 transition-colors">
-                            <td className="px-4 py-3 text-sm font-medium text-gray-900">{r.name}</td>
+                            <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-xs truncate">{r.name}</td>
                             <td className="px-4 py-3 text-sm text-gray-500">{r.dob || "—"}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{r.email || "—"}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{r.email || "—"}</td>
                             <td className="px-4 py-3 text-sm text-gray-500">{r.phone || "—"}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{r.institution || "—"}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{r.institution || "—"}</td>
                             <td className="px-4 py-3 text-sm text-gray-500">{r.institution_type || r.institutionType || "—"}</td>
                             <td className="px-4 py-3 text-sm text-gray-500">{formatDateTime(r.created_at)}</td>
                             <td className="px-4 py-3 text-sm text-right">
@@ -755,23 +850,23 @@ const CampSubmissions = () => {
                   </table>
                 </div>
 
-                <div className="flex items-center justify-between mt-4 text-sm">
+                <div className="flex flex-col sm:flex-row items-center justify-between mt-4 text-sm gap-3">
                   <div className="text-gray-600">
                     {Number.isFinite(total)
                       ? `Showing ${offset + 1} to ${Math.min(offset + limit, total)} of ${total}`
                       : `Showing ${rows.length} records`}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 w-full sm:w-auto">
                     <button
                       onClick={() => setOffset((o) => Math.max(0, o - limit))}
-                      className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                      className="flex-1 sm:flex-none px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                       disabled={loadingList || offset === 0}
                     >
                       Previous
                     </button>
                     <button
                       onClick={() => setOffset((o) => o + limit)}
-                      className="px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
+                      className="flex-1 sm:flex-none px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-700 font-medium hover:bg-gray-50 transition-colors"
                       disabled={loadingList || rows.length < limit}
                     >
                       Next
