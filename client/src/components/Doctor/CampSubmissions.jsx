@@ -1,7 +1,7 @@
 // src/components/CampSubmissions.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Select from "react-select";
-import { FiEdit, FiTrash2, FiSearch, FiRefreshCw, FiPlus, FiList, FiFileText, FiClock } from "react-icons/fi";
+import { FiEdit, FiTrash2, FiSearch, FiRefreshCw, FiPlus, FiList, FiFileText, FiClock, FiChevronDown, FiX } from "react-icons/fi";
 import {
   listCampSubmissions,
   createCampSubmission,
@@ -60,8 +60,8 @@ const Card = ({ children, className = "" }) => (
   </div>
 );
 
-const Button = ({ children, variant = "primary", size = "md", className = "", ...props }) => {
-  const baseClasses = "rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2";
+const Button = ({ children, variant = "primary", size = "md", className = "", icon: Icon, ...props }) => {
+  const baseClasses = "rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 inline-flex items-center justify-center";
   const sizeClasses = {
     sm: "px-3 py-1.5 text-sm",
     md: "px-4 py-2 text-sm",
@@ -79,6 +79,7 @@ const Button = ({ children, variant = "primary", size = "md", className = "", ..
       className={cls(baseClasses, sizeClasses[size], variantClasses[variant], className)}
       {...props}
     >
+      {Icon && <Icon className={children ? "mr-2" : ""} />}
       {children}
     </button>
   );
@@ -107,6 +108,53 @@ const EmptyState = ({ message = "No data found", icon: Icon = FiList }) => (
     <p className="mt-1 text-sm text-gray-500">Get started by creating a new record.</p>
   </div>
 );
+
+// Custom Select Styles for react-select
+const customSelectStyles = {
+  control: (base, state) => ({
+    ...base,
+    minHeight: '42px',
+    borderColor: state.isFocused ? '#3b82f6' : '#d1d5db',
+    boxShadow: state.isFocused ? '0 0 0 2px rgba(59, 130, 246, 0.2)' : 'none',
+    '&:hover': {
+      borderColor: state.isFocused ? '#3b82f6' : '#9ca3af'
+    }
+  }),
+  menu: (base) => ({
+    ...base,
+    zIndex: 50,
+    borderRadius: '0.5rem',
+    border: '1px solid #e5e7eb',
+    boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)'
+  }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isSelected ? '#3b82f6' : state.isFocused ? '#eff6ff' : 'white',
+    color: state.isSelected ? 'white' : '#374151',
+    '&:active': {
+      backgroundColor: '#3b82f6',
+      color: 'white'
+    }
+  }),
+  dropdownIndicator: (base) => ({
+    ...base,
+    color: '#6b7280',
+    '&:hover': {
+      color: '#374151'
+    }
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    color: '#6b7280',
+    '&:hover': {
+      color: '#374151'
+    }
+  }),
+  indicatorSeparator: (base) => ({
+    ...base,
+    backgroundColor: '#e5e7eb'
+  })
+};
 
 const SubmissionForm = ({
   initial = null,
@@ -213,15 +261,12 @@ const SubmissionForm = ({
             options={INST_TYPE_OPTIONS}
             value={institutionType ? INST_TYPE_OPTIONS.find((o) => o.value === institutionType) : null}
             onChange={(opt) => setInstitutionType(opt?.value || "")}
-            placeholder="Select type..."
+            placeholder="Select institution type..."
             isClearable
-            styles={{
-              control: (base) => ({
-                ...base,
-                minHeight: '42px',
-                borderColor: '#d1d5db',
-                '&:hover': { borderColor: '#9ca3af' }
-              })
+            styles={customSelectStyles}
+            components={{
+              DropdownIndicator: () => <FiChevronDown className="h-5 w-5 mr-2 text-gray-400" />,
+              ClearIndicator: () => <FiX className="h-4 w-4 mr-2 text-gray-400 hover:text-gray-600" />
             }}
           />
         </div>
@@ -234,7 +279,7 @@ const SubmissionForm = ({
           rows={3}
           value={comments || ""}
           onChange={(e) => setComments(e.target.value)}
-          placeholder="Any notes..."
+          placeholder="Any notes or additional information..."
         />
       </div>
 
@@ -243,12 +288,10 @@ const SubmissionForm = ({
           type="submit"
           disabled={submitting}
           className="min-w-[120px]"
+          icon={submitting ? FiRefreshCw : null}
         >
           {submitting ? (
-            <>
-              <FiRefreshCw className="animate-spin inline mr-2" />
-              Saving...
-            </>
+            "Saving..."
           ) : (
             submitLabel
           )}
@@ -325,6 +368,7 @@ const ConfirmDeleteModal = ({ open, onCancel, onConfirm, item, loading }) => {
           onClick={onConfirm}
           disabled={loading}
           className="sm:ml-3 sm:w-auto"
+          icon={loading ? FiRefreshCw : null}
         >
           {loading ? "Deleting..." : "Delete"}
         </Button>
@@ -413,7 +457,7 @@ const AuditLogsPanel = () => {
         </div>
         
         <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
               <Select
@@ -421,36 +465,35 @@ const AuditLogsPanel = () => {
                 options={ACTION_OPTIONS}
                 value={actionOpt}
                 onChange={setActionOpt}
-                styles={{
-                  control: (base) => ({
-                    ...base,
-                    minHeight: '42px'
-                  })
+                styles={customSelectStyles}
+                components={{
+                  DropdownIndicator: () => <FiChevronDown className="h-5 w-5 mr-2 text-gray-400" />,
                 }}
               />
             </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Items per page</label>
-              <select
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                value={limit}
-                onChange={(e) => setLimit(Math.max(1, Number(e.target.value) || 25))}
-              >
-                {[10, 25, 50, 100].map((n) => (
-                  <option key={n} value={n}>{n}</option>
-                ))}
-              </select>
+              <Select
+                classNamePrefix="react-select"
+                options={[10, 25, 50, 100].map(n => ({ value: n, label: n }))}
+                value={{ value: limit, label: limit }}
+                onChange={(opt) => setLimit(opt.value)}
+                styles={customSelectStyles}
+                components={{
+                  DropdownIndicator: () => <FiChevronDown className="h-5 w-5 mr-2 text-gray-400" />,
+                }}
+              />
             </div>
             
-            <div className="flex items-end">
+            <div className="flex justify-end">
               <Button
                 onClick={load}
                 disabled={loading}
-                className="w-full"
+                icon={FiRefreshCw}
+                className="w-full md:w-auto"
               >
-                <FiRefreshCw className={cls("mr-2", loading && "animate-spin")} />
-                Refresh
+                {loading ? "Refreshing..." : "Refresh"}
               </Button>
             </div>
           </div>
@@ -659,40 +702,48 @@ const CampSubmissions = () => {
             </div>
             
             <div className="p-6">
-              <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                <div className="flex-1 relative">
-                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-                  <input
-                    value={q}
-                    onChange={(e) => {
-                      setOffset(0);
-                      setQ(e.target.value);
-                    }}
-                    placeholder="Search by name, email, or institution..."
-                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  />
+              <div className="flex flex-col sm:flex-row gap-4 mb-6 items-end">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                  <div className="relative">
+                    <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                    <input
+                      value={q}
+                      onChange={(e) => {
+                        setOffset(0);
+                        setQ(e.target.value);
+                      }}
+                      placeholder="Search by name, email, or institution..."
+                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                    />
+                  </div>
                 </div>
                 
-                <div className="flex gap-2">
-                  <select
-                    value={limit}
-                    onChange={(e) => {
-                      setOffset(0);
-                      setLimit(Math.max(1, Number(e.target.value) || 10));
-                    }}
-                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    {[10, 20, 50, 100].map((n) => (
-                      <option key={n} value={n}>{n} per page</option>
-                    ))}
-                  </select>
+                <div className="flex gap-2 items-end">
+                  <div className="w-32">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Items per page</label>
+                    <Select
+                      classNamePrefix="react-select"
+                      options={[10, 20, 50, 100].map(n => ({ value: n, label: n }))}
+                      value={{ value: limit, label: limit }}
+                      onChange={(opt) => {
+                        setOffset(0);
+                        setLimit(opt.value);
+                      }}
+                      styles={customSelectStyles}
+                      components={{
+                        DropdownIndicator: () => <FiChevronDown className="h-5 w-5 mr-2 text-gray-400" />,
+                      }}
+                    />
+                  </div>
                   
                   <Button
                     onClick={loadList}
                     disabled={loadingList}
                     variant="outline"
+                    icon={FiRefreshCw}
+                    className="h-[42px]"
                   >
-                    <FiRefreshCw className={cls("mr-2", loadingList && "animate-spin")} />
                     Refresh
                   </Button>
                 </div>
