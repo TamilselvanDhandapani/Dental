@@ -1,16 +1,7 @@
 // src/components/CampSubmissions.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Select from "react-select";
-import { FiEdit, FiTrash2 } from "react-icons/fi";
-import {
-  listCampSubmissions,
-  createCampSubmission,
-  updateCampSubmission,
-  deleteCampSubmission,
-  getAuditRecent,
-} from "../../utils/api"; // adjust path if needed
-
-/* ------------------------------- Helpers -------------------------------- */
+import { FiEdit, FiTrash2, FiSearch, FiRefreshCw, FiPlus, FiList, FiFileText, FiClock } from "react-icons/fi";
 
 const ACTION_DB_TO_UI = { INSERT: "Added", UPDATE: "Edited", DELETE: "Deleted" };
 const ACTION_UI_TO_DB = { Added: "INSERT", Edited: "UPDATE", Deleted: "DELETE" };
@@ -27,7 +18,7 @@ const INST_TYPE_OPTIONS = [
 ];
 
 const ACTION_OPTIONS = [
-  { value: "All", label: "All" },
+  { value: "All", label: "All Actions" },
   { value: "Added", label: "Added" },
   { value: "Edited", label: "Edited" },
   { value: "Deleted", label: "Deleted" },
@@ -44,19 +35,71 @@ const formatDateTime = (v) => {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
-    second: "2-digit",
   });
 };
+
 const badge = (a) =>
   a === "INSERT"
-    ? "bg-green-100 text-green-700"
+    ? "bg-green-100 text-green-800 border-green-200"
     : a === "UPDATE"
-    ? "bg-blue-100 text-blue-700"
+    ? "bg-blue-100 text-blue-800 border-blue-200"
     : a === "DELETE"
-    ? "bg-rose-100 text-rose-700"
-    : "bg-gray-100 text-gray-700";
+    ? "bg-red-100 text-red-800 border-red-200"
+    : "bg-gray-100 text-gray-800 border-gray-200";
 
-/* ------------------------------- Form ----------------------------------- */
+const Card = ({ children, className = "" }) => (
+  <div className={`bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden ${className}`}>
+    {children}
+  </div>
+);
+
+const Button = ({ children, variant = "primary", size = "md", className = "", ...props }) => {
+  const baseClasses = "rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2";
+  const sizeClasses = {
+    sm: "px-3 py-1.5 text-sm",
+    md: "px-4 py-2 text-sm",
+    lg: "px-5 py-2.5 text-base"
+  };
+  const variantClasses = {
+    primary: "bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500",
+    secondary: "bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500",
+    danger: "bg-red-600 text-white hover:bg-red-700 focus:ring-red-500",
+    outline: "border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 focus:ring-blue-500"
+  };
+
+  return (
+    <button
+      className={cls(baseClasses, sizeClasses[size], variantClasses[variant], className)}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+};
+
+const Input = ({ label, className = "", ...props }) => (
+  <div className={className}>
+    {label && <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>}
+    <input
+      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+      {...props}
+    />
+  </div>
+);
+
+const LoadingSpinner = () => (
+  <div className="flex justify-center items-center py-8">
+    <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+  </div>
+);
+
+const EmptyState = ({ message = "No data found", icon: Icon = FiList }) => (
+  <div className="text-center py-12 px-4">
+    <Icon className="mx-auto h-12 w-12 text-gray-400" />
+    <h3 className="mt-2 text-sm font-medium text-gray-900">{message}</h3>
+    <p className="mt-1 text-sm text-gray-500">Get started by creating a new record.</p>
+  </div>
+);
 
 const SubmissionForm = ({
   initial = null,
@@ -90,7 +133,6 @@ const SubmissionForm = ({
     e.preventDefault();
     setErr("");
 
-    // Basic validation
     if (!name.trim()) return setErr("Name is required");
     if (email && !/^\S+@\S+\.\S+$/.test(email)) return setErr("Enter a valid email");
 
@@ -106,128 +148,138 @@ const SubmissionForm = ({
 
     try {
       await onSubmit(payload);
-      // leave resetting to parent
     } catch (e) {
       setErr(e?.message || "Failed to submit");
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-6">
       {!!err && (
-        <div className="p-2 rounded border border-rose-200 bg-rose-50 text-rose-700 text-sm">
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
           {err}
         </div>
       )}
+      
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Input
+          label="Name *"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Full name"
+          required
+        />
+        
+        <Input
+          label="Date of Birth"
+          type="date"
+          value={dob || ""}
+          onChange={(e) => setDob(e.target.value)}
+        />
+        
+        <Input
+          label="Email"
+          type="email"
+          value={email || ""}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="name@example.com"
+        />
+        
+        <Input
+          label="Phone"
+          value={phone || ""}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="9876543210"
+        />
+        
+        <Input
+          label="Institution"
+          value={institution || ""}
+          onChange={(e) => setInstitution(e.target.value)}
+          placeholder="City Hospital"
+        />
+        
         <div>
-          <label className="block text-xs text-gray-600 mb-1">Name *</label>
-          <input
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Full name"
-            required
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">DOB</label>
-          <input
-            type="date"
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-            value={dob || ""}
-            onChange={(e) => setDob(e.target.value)}
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Email</label>
-          <input
-            type="email"
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-            value={email || ""}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="name@example.com"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Phone</label>
-          <input
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-            value={phone || ""}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="9876543210"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Institution</label>
-          <input
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-            value={institution || ""}
-            onChange={(e) => setInstitution(e.target.value)}
-            placeholder="City Hospital"
-          />
-        </div>
-        <div>
-          <label className="block text-xs text-gray-600 mb-1">Institution Type</label>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Institution Type</label>
           <Select
-            classNamePrefix="rs"
+            classNamePrefix="react-select"
             options={INST_TYPE_OPTIONS}
-            value={
-              institutionType
-                ? INST_TYPE_OPTIONS.find((o) => o.value === institutionType) || null
-                : null
-            }
+            value={institutionType ? INST_TYPE_OPTIONS.find((o) => o.value === institutionType) : null}
             onChange={(opt) => setInstitutionType(opt?.value || "")}
             placeholder="Select type..."
             isClearable
-          />
-        </div>
-        <div className="md:col-span-2">
-          <label className="block text-xs text-gray-600 mb-1">Comments</label>
-          <textarea
-            className="w-full border rounded-lg px-3 py-2 text-sm"
-            rows={3}
-            value={comments || ""}
-            onChange={(e) => setComments(e.target.value)}
-            placeholder="Any notes..."
+            styles={{
+              control: (base) => ({
+                ...base,
+                minHeight: '42px',
+                borderColor: '#d1d5db',
+                '&:hover': { borderColor: '#9ca3af' }
+              })
+            }}
           />
         </div>
       </div>
 
-      <div className="pt-2">
-        <button
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Comments</label>
+        <textarea
+          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+          rows={3}
+          value={comments || ""}
+          onChange={(e) => setComments(e.target.value)}
+          placeholder="Any notes..."
+        />
+      </div>
+
+      <div className="flex justify-end pt-4">
+        <Button
           type="submit"
           disabled={submitting}
-          className={cls(
-            "px-4 py-2 rounded-lg text-white",
-            submitting ? "bg-sky-300 cursor-not-allowed" : "bg-sky-600 hover:bg-sky-700"
-          )}
+          className="min-w-[120px]"
         >
-          {submitting ? "Saving..." : submitLabel}
-        </button>
+          {submitting ? (
+            <>
+              <FiRefreshCw className="animate-spin inline mr-2" />
+              Saving...
+            </>
+          ) : (
+            submitLabel
+          )}
+        </Button>
       </div>
     </form>
   );
 };
 
-/* ------------------------------- Modals ---------------------------------- */
-
-const Modal = ({ open, onClose, title, children, footer }) => {
+const Modal = ({ open, onClose, title, children, size = "md" }) => {
   if (!open) return null;
+  
+  const sizeClasses = {
+    sm: "max-w-md",
+    md: "max-w-2xl",
+    lg: "max-w-4xl"
+  };
+
   return (
-    <div className="fixed inset-0 z-50">
-      <div
-        className="absolute inset-0 bg-black/40"
-        aria-hidden="true"
-        onClick={onClose}
-      />
-      <div className="absolute inset-0 flex items-center justify-center p-4">
-        <div className="w-full max-w-2xl bg-white rounded-2xl shadow-lg border border-gray-200">
-          <div className="px-4 py-3 border-b">
-            <h3 className="text-lg font-semibold">{title}</h3>
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:block sm:p-0">
+        <div className="fixed inset-0 transition-opacity" aria-hidden="true">
+          <div className="absolute inset-0 bg-gray-500 opacity-75" onClick={onClose}></div>
+        </div>
+
+        <span className="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
+
+        <div className={`inline-block align-bottom bg-white rounded-lg text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle ${sizeClasses[size]} w-full`}>
+          <div className="bg-white px-4 pt-5 pb-4 sm:p-6">
+            <div className="sm:flex sm:items-start">
+              <div className="mt-3 text-center sm:mt-0 sm:text-left w-full">
+                <h3 className="text-lg leading-6 font-medium text-gray-900 mb-4">
+                  {title}
+                </h3>
+                {children}
+              </div>
+            </div>
           </div>
-          <div className="p-4">{children}</div>
-          {footer && <div className="px-4 py-3 border-t bg-gray-50">{footer}</div>}
         </div>
       </div>
     </div>
@@ -239,28 +291,44 @@ const ConfirmDeleteModal = ({ open, onCancel, onConfirm, item, loading }) => {
     <Modal
       open={open}
       onClose={onCancel}
-      title="Delete submission?"
-      footer={
-        <div className="flex justify-end gap-2">
-          <button className="px-3 py-2 rounded-lg border" onClick={onCancel} disabled={loading}>
-            Cancel
-          </button>
-          <button
-            className="px-3 py-2 rounded-lg text-white bg-rose-600 hover:bg-rose-700 disabled:bg-rose-300"
-            onClick={onConfirm}
-            disabled={loading}
-          >
-            {loading ? "Deleting..." : "Delete"}
-          </button>
-        </div>
-      }
+      title="Confirm Deletion"
+      size="sm"
     >
-      <div className="text-sm text-gray-700 space-y-1">
-        <p>
-          This will permanently delete{" "}
-          <span className="font-medium">{item?.name || "this record"}</span>.
-        </p>
-        <p className="text-gray-500">This action cannot be undone.</p>
+      <div className="bg-white px-4 py-5 sm:p-6">
+        <div className="sm:flex sm:items-start">
+          <div className="mx-auto flex-shrink-0 flex items-center justify-center h-12 w-12 rounded-full bg-red-100 sm:mx-0 sm:h-10 sm:w-10">
+            <FiTrash2 className="h-6 w-6 text-red-600" />
+          </div>
+          <div className="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
+            <h3 className="text-lg leading-6 font-medium text-gray-900">
+              Delete submission
+            </h3>
+            <div className="mt-2">
+              <p className="text-sm text-gray-500">
+                Are you sure you want to delete <span className="font-medium">{item?.name || "this record"}</span>? 
+                This action cannot be undone.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="bg-gray-50 px-4 py-3 sm:px-6 sm:flex sm:flex-row-reverse">
+        <Button
+          variant="danger"
+          onClick={onConfirm}
+          disabled={loading}
+          className="sm:ml-3 sm:w-auto"
+        >
+          {loading ? "Deleting..." : "Delete"}
+        </Button>
+        <Button
+          variant="outline"
+          onClick={onCancel}
+          disabled={loading}
+          className="mt-3 sm:mt-0 sm:w-auto"
+        >
+          Cancel
+        </Button>
       </div>
     </Modal>
   );
@@ -268,6 +336,7 @@ const ConfirmDeleteModal = ({ open, onCancel, onConfirm, item, loading }) => {
 
 const EditSubmissionModal = ({ open, onClose, onSaved, item }) => {
   const [saving, setSaving] = useState(false);
+  
   const onSubmit = async (payload) => {
     setSaving(true);
     try {
@@ -278,32 +347,31 @@ const EditSubmissionModal = ({ open, onClose, onSaved, item }) => {
       setSaving(false);
     }
   };
+  
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={`Edit: ${item?.name || ""}`}
-      footer={null}
+      title={`Edit Submission: ${item?.name || ""}`}
+      size="lg"
     >
       <SubmissionForm
         initial={item}
         onSubmit={onSubmit}
         submitting={saving}
-        submitLabel="Update"
+        submitLabel="Update Submission"
       />
     </Modal>
   );
 };
 
-/* ----------------------------- Audit Panel ------------------------------- */
-/*  ✅ Only show logs where table_name === 'camp_submissions'  */
 const AuditLogsPanel = () => {
   const [items, setItems] = useState([]);
   const [limit, setLimit] = useState(25);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  const [actionOpt, setActionOpt] = useState(ACTION_OPTIONS[0]); // All
+  const [actionOpt, setActionOpt] = useState(ACTION_OPTIONS[0]);
 
   const load = async () => {
     setLoading(true);
@@ -311,7 +379,6 @@ const AuditLogsPanel = () => {
     try {
       const action = actionOpt?.value === "All" ? undefined : ACTION_UI_TO_DB[actionOpt.value];
       const r = await getAuditRecent({ action, limit, offset });
-      // Filter to camp submissions ONLY
       const rows = (Array.isArray(r?.items) ? r.items : []).filter(
         (ev) => ev?.table_name === "camp_submissions"
       );
@@ -326,131 +393,130 @@ const AuditLogsPanel = () => {
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actionOpt, limit, offset]);
 
   useEffect(() => setOffset(0), [actionOpt]);
 
   return (
-    <div className="space-y-4">
-      <div className="bg-white p-4 rounded-xl border">
-        <div className="mb-2">
-          <h3 className="text-lg font-semibold">Camp Submissions — Audit Logs</h3>
+    <div className="space-y-6">
+      <Card>
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-semibold text-gray-900">Audit Logs</h3>
+          <p className="mt-1 text-sm text-gray-500">Track all changes made to camp submissions</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Show</label>
-            <Select
-              classNamePrefix="rs"
-              options={ACTION_OPTIONS}
-              value={actionOpt}
-              onChange={(opt) => setActionOpt(opt || ACTION_OPTIONS[0])}
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-600 mb-1">Page size</label>
-            <select
-              className="w-full border rounded-lg px-3 py-2 text-sm"
-              value={limit}
-              onChange={(e) => setLimit(Math.max(1, Number(e.target.value) || 25))}
-            >
-              {[10, 25, 50, 100, 200].map((n) => (
-                <option key={n} value={n}>
-                  {n}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={load}
-              className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50"
-              disabled={loading}
-            >
-              {loading ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {err && (
-        <div className="p-3 rounded-lg border border-rose-200 bg-rose-50 text-rose-700 text-sm">
-          {err}
-        </div>
-      )}
-      {!err && loading && (
-        <div className="p-8 rounded-xl border bg-white text-center text-gray-600">
-          Loading logs…
-        </div>
-      )}
-
-      {!err && !loading && (
-        <>
-          {items.length === 0 ? (
-            <div className="p-8 rounded-xl border bg-white text-center text-gray-600">
-              No events found.
+        
+        <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Action Type</label>
+              <Select
+                classNamePrefix="react-select"
+                options={ACTION_OPTIONS}
+                value={actionOpt}
+                onChange={setActionOpt}
+                styles={{
+                  control: (base) => ({
+                    ...base,
+                    minHeight: '42px'
+                  })
+                }}
+              />
             </div>
-          ) : (
+            
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Items per page</label>
+              <select
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                value={limit}
+                onChange={(e) => setLimit(Math.max(1, Number(e.target.value) || 25))}
+              >
+                {[10, 25, 50, 100].map((n) => (
+                  <option key={n} value={n}>{n}</option>
+                ))}
+              </select>
+            </div>
+            
+            <div className="flex items-end">
+              <Button
+                onClick={load}
+                disabled={loading}
+                className="w-full"
+              >
+                <FiRefreshCw className={cls("mr-2", loading && "animate-spin")} />
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-6">
+          {err && (
+            <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+              {err}
+            </div>
+          )}
+          
+          {loading && <LoadingSpinner />}
+          
+          {!loading && !err && items.length === 0 && (
+            <EmptyState message="No audit logs found" icon={FiClock} />
+          )}
+          
+          {!loading && !err && items.length > 0 && (
             <div className="space-y-3">
               {items.map((ev) => (
-                <div
-                  key={`${ev.id}-${ev.happened_at}`}
-                  className="rounded-lg border bg-white p-4 flex items-center justify-between"
-                >
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={cls("px-2 py-0.5 rounded text-xs font-medium", badge(ev.action))}>
-                        {ACTION_DB_TO_UI[ev.action] || ev.action}
-                      </span>
-                      <span className="text-sm text-gray-700">
-                        Camp Submission
-                      </span>
-                    </div>
-                    <div className="mt-1 text-xs text-gray-500">
-                      By{" "}
-                      <span className="font-medium text-gray-700">
-                        {ev.actor_email || ev.actor_id || "Unknown"}
-                      </span>
+                <div key={ev.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
+                  <div className="flex items-center space-x-4">
+                    <span className={cls("px-2 py-1 rounded-full text-xs font-medium border", badge(ev.action))}>
+                      {ACTION_DB_TO_UI[ev.action] || ev.action}
+                    </span>
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">Camp Submission</p>
+                      <p className="text-sm text-gray-500">
+                        By {ev.actor_email || ev.actor_id || "Unknown"}
+                      </p>
                     </div>
                   </div>
-                  <div className="text-right text-sm text-gray-800">{formatDateTime(ev.happened_at)}</div>
+                  <div className="text-sm text-gray-500">{formatDateTime(ev.happened_at)}</div>
                 </div>
               ))}
             </div>
           )}
-
-          <div className="flex items-center justify-between pt-2">
-            <div className="text-sm text-gray-500">Showing up to {limit} events</div>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setOffset((o) => Math.max(0, o - limit))}
-                className="px-3 py-1.5 bg-white border rounded-lg text-sm hover:bg-gray-50"
-                disabled={loading || offset === 0}
-              >
-                Previous
-              </button>
-              <button
-                onClick={() => setOffset((o) => o + limit)}
-                className="px-3 py-1.5 bg-white border rounded-lg text-sm hover:bg-gray-50"
-                disabled={loading || items.length < limit}
-              >
-                Next
-              </button>
+          
+          {!loading && items.length > 0 && (
+            <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+              <p className="text-sm text-gray-500">
+                Showing {items.length} of {limit} events
+              </p>
+              <div className="flex space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOffset((o) => Math.max(0, o - limit))}
+                  disabled={loading || offset === 0}
+                >
+                  Previous
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setOffset((o) => o + limit)}
+                  disabled={loading || items.length < limit}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          )}
+        </div>
+      </Card>
     </div>
   );
 };
 
-/* ----------------------------- Main Page --------------------------------- */
-
 const CampSubmissions = () => {
-  const [tab, setTab] = useState("form"); // 'form' | 'list' | 'audit'
+  const [tab, setTab] = useState("form");
   const [creating, setCreating] = useState(false);
-
-  // list state
   const [rows, setRows] = useState([]);
   const [total, setTotal] = useState(null);
   const [limit, setLimit] = useState(10);
@@ -458,22 +524,17 @@ const CampSubmissions = () => {
   const [q, setQ] = useState("");
   const [loadingList, setLoadingList] = useState(false);
   const [errList, setErrList] = useState("");
-
-  // edit/delete modals
   const [editOpen, setEditOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [delOpen, setDelOpen] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [deletingNow, setDeletingNow] = useState(false);
 
-  const tabs = useMemo(
-    () => [
-      { key: "form", label: "Add / Edit" },
-      { key: "list", label: "Submissions" },
-      { key: "audit", label: "Audit Logs" },
-    ],
-    []
-  );
+  const tabs = useMemo(() => [
+    { key: "form", label: "Add Submission", icon: FiPlus },
+    { key: "list", label: "View Submissions", icon: FiList },
+    { key: "audit", label: "Audit Logs", icon: FiFileText },
+  ], []);
 
   const loadList = async () => {
     setLoadingList(true);
@@ -498,7 +559,6 @@ const CampSubmissions = () => {
 
   useEffect(() => {
     if (tab === "list") loadList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, q, limit, offset]);
 
   const handleCreate = async (payload) => {
@@ -537,131 +597,173 @@ const CampSubmissions = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Tabs */}
-        <div className="bg-white rounded-2xl shadow-sm border">
-          <div className="flex flex-wrap">
-            {tabs.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className={cls(
-                  "px-4 py-3 text-sm font-medium border-b-2",
-                  tab === t.key
-                    ? "border-sky-600 text-sky-700"
-                    : "border-transparent text-gray-600 hover:text-gray-800"
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Camp Submissions</h1>
+          <p className="mt-2 text-lg text-gray-600">Manage camp registration submissions</p>
+        </div>
 
-          <div className="p-4 sm:p-6">
-            {tab === "form" && (
-              <>
-                <h2 className="text-lg font-semibold mb-3">Add New Submission</h2>
-                <SubmissionForm onSubmit={handleCreate} submitting={creating} submitLabel="Create" />
-              </>
-            )}
+        {/* Tab Navigation */}
+        <div className="border-b border-gray-200 mb-8">
+          <nav className="-mb-px flex space-x-8">
+            {tabs.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTab(t.key)}
+                  className={cls(
+                    "group inline-flex items-center py-4 px-1 border-b-2 font-medium text-sm",
+                    tab === t.key
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  )}
+                >
+                  <Icon className={cls(
+                    "-ml-0.5 mr-2 h-5 w-5",
+                    tab === t.key ? "text-blue-500" : "text-gray-400 group-hover:text-gray-500"
+                  )} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
 
-            {tab === "list" && (
-              <>
-                <div className="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between mb-4">
-                  <h2 className="text-lg font-semibold">Submissions</h2>
-                  <div className="flex gap-2">
-                    <input
-                      value={q}
-                      onChange={(e) => {
-                        setOffset(0);
-                        setQ(e.target.value);
-                      }}
-                      placeholder="Search name/email/institution…"
-                      className="w-full sm:w-72 border rounded-lg px-3 py-2 text-sm"
-                    />
-                    <select
-                      value={limit}
-                      onChange={(e) => {
-                        setOffset(0);
-                        setLimit(Math.max(1, Number(e.target.value) || 10));
-                      }}
-                      className="border rounded-lg px-2 py-2 text-sm"
-                    >
-                      {[10, 20, 50, 100].map((n) => (
-                        <option key={n} value={n}>
-                          {n}/page
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      onClick={loadList}
-                      disabled={loadingList}
-                      className="px-3 py-2 rounded-lg border bg-white hover:bg-gray-50 text-sm"
-                    >
-                      {loadingList ? "Refreshing…" : "Refresh"}
-                    </button>
-                  </div>
+        {/* Tab Content */}
+        {tab === "form" && (
+          <Card className="max-w-4xl mx-auto">
+            <div className="px-6 py-5 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Add New Submission</h2>
+              <p className="mt-1 text-sm text-gray-500">Fill out the form below to register a new camp participant</p>
+            </div>
+            <div className="p-6">
+              <SubmissionForm onSubmit={handleCreate} submitting={creating} submitLabel="Create Submission" />
+            </div>
+          </Card>
+        )}
+
+        {tab === "list" && (
+          <Card>
+            <div className="px-6 py-5 border-b border-gray-200">
+              <h2 className="text-xl font-semibold text-gray-900">Camp Submissions</h2>
+              <p className="mt-1 text-sm text-gray-500">View and manage all camp registration submissions</p>
+            </div>
+            
+            <div className="p-6">
+              <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                <div className="flex-1 relative">
+                  <FiSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={q}
+                    onChange={(e) => {
+                      setOffset(0);
+                      setQ(e.target.value);
+                    }}
+                    placeholder="Search by name, email, or institution..."
+                    className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  />
                 </div>
+                
+                <div className="flex gap-2">
+                  <select
+                    value={limit}
+                    onChange={(e) => {
+                      setOffset(0);
+                      setLimit(Math.max(1, Number(e.target.value) || 10));
+                    }}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    {[10, 20, 50, 100].map((n) => (
+                      <option key={n} value={n}>{n} per page</option>
+                    ))}
+                  </select>
+                  
+                  <Button
+                    onClick={loadList}
+                    disabled={loadingList}
+                    variant="outline"
+                  >
+                    <FiRefreshCw className={cls("mr-2", loadingList && "animate-spin")} />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
 
-                {errList && (
-                  <div className="p-3 rounded border border-rose-200 bg-rose-50 text-rose-700 text-sm mb-3">
-                    {errList}
-                  </div>
-                )}
+              {errList && (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm">
+                  {errList}
+                </div>
+              )}
 
-                <div className="overflow-auto border rounded-xl">
-                  <table className="min-w-[800px] w-full">
+              <div className="overflow-hidden border border-gray-200 rounded-lg">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
-                      <tr className="text-left text-xs text-gray-600">
-                        <th className="px-3 py-2 font-medium">Name</th>
-                        <th className="px-3 py-2 font-medium">DOB</th>
-                        <th className="px-3 py-2 font-medium">Email</th>
-                        <th className="px-3 py-2 font-medium">Phone</th>
-                        <th className="px-3 py-2 font-medium">Institution</th>
-                        <th className="px-3 py-2 font-medium">Type</th>
-                        <th className="px-3 py-2 font-medium">Created</th>
-                        <th className="px-3 py-2 font-medium text-right">Actions</th>
+                      <tr>
+                        {["Name", "DOB", "Email", "Phone", "Institution", "Type", "Created", "Actions"].map((header) => (
+                          <th
+                            key={header}
+                            className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                          >
+                            {header}
+                          </th>
+                        ))}
                       </tr>
                     </thead>
-                    <tbody className="text-sm">
+                    <tbody className="bg-white divide-y divide-gray-200">
                       {loadingList ? (
                         <tr>
-                          <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
-                            Loading…
+                          <td colSpan={8} className="px-6 py-8 text-center">
+                            <LoadingSpinner />
                           </td>
                         </tr>
                       ) : rows.length === 0 ? (
                         <tr>
-                          <td colSpan={8} className="px-3 py-6 text-center text-gray-500">
-                            No records found.
+                          <td colSpan={8} className="px-6 py-12">
+                            <EmptyState message="No submissions found" />
                           </td>
                         </tr>
                       ) : (
                         rows.map((r) => (
-                          <tr key={r.id} className="border-t">
-                            <td className="px-3 py-2">{r.name}</td>
-                            <td className="px-3 py-2">{r.dob || "—"}</td>
-                            <td className="px-3 py-2">{r.email || "—"}</td>
-                            <td className="px-3 py-2">{r.phone || "—"}</td>
-                            <td className="px-3 py-2">{r.institution || "—"}</td>
-                            <td className="px-3 py-2">{r.institution_type || r.institutionType || "—"}</td>
-                            <td className="px-3 py-2">{formatDateTime(r.created_at)}</td>
-                            <td className="px-3 py-2">
-                              <div className="flex gap-2 justify-end">
+                          <tr key={r.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                              {r.name}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {r.dob || "—"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {r.email || "—"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {r.phone || "—"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {r.institution || "—"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {r.institution_type || r.institutionType || "—"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {formatDateTime(r.created_at)}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex items-center space-x-2">
                                 <button
-                                  className="p-2 rounded hover:bg-gray-100"
-                                  title="Edit"
                                   onClick={() => startEdit(r)}
+                                  className="text-blue-600 hover:text-blue-900 p-1 rounded hover:bg-blue-50"
+                                  title="Edit"
                                 >
-                                  <FiEdit />
+                                  <FiEdit className="h-4 w-4" />
                                 </button>
                                 <button
-                                  className="p-2 rounded hover:bg-rose-50 text-rose-600"
-                                  title="Delete"
                                   onClick={() => confirmDelete(r)}
+                                  className="text-red-600 hover:text-red-900 p-1 rounded hover:bg-red-50"
+                                  title="Delete"
                                 >
-                                  <FiTrash2 />
+                                  <FiTrash2 className="h-4 w-4" />
                                 </button>
                               </div>
                             </td>
@@ -671,36 +773,40 @@ const CampSubmissions = () => {
                     </tbody>
                   </table>
                 </div>
+              </div>
 
-                <div className="flex items-center justify-between mt-3 text-sm">
-                  <div className="text-gray-600">
+              {!loadingList && rows.length > 0 && (
+                <div className="flex items-center justify-between mt-6 pt-4 border-t border-gray-200">
+                  <p className="text-sm text-gray-500">
                     {Number.isFinite(total)
-                      ? `Showing ${rows.length} of ${total}`
-                      : `Showing ${rows.length}`}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
+                      ? `Showing ${offset + 1} to ${Math.min(offset + limit, total)} of ${total} entries`
+                      : `Showing ${rows.length} entries`}
+                  </p>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setOffset((o) => Math.max(0, o - limit))}
-                      className="px-3 py-1.5 bg-white border rounded-lg hover:bg-gray-50"
                       disabled={loadingList || offset === 0}
                     >
                       Previous
-                    </button>
-                    <button
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setOffset((o) => o + limit)}
-                      className="px-3 py-1.5 bg-white border rounded-lg hover:bg-gray-50"
                       disabled={loadingList || rows.length < limit}
                     >
                       Next
-                    </button>
+                    </Button>
                   </div>
                 </div>
-              </>
-            )}
+              )}
+            </div>
+          </Card>
+        )}
 
-            {tab === "audit" && <AuditLogsPanel />}
-          </div>
-        </div>
+        {tab === "audit" && <AuditLogsPanel />}
       </div>
 
       {/* Modals */}
