@@ -15,10 +15,10 @@ const navItems = [
   { to: "/doctor",                   label: "Patients",         icon: FaUserFriends, exact: true },
   { to: "/doctor/form",              label: "New Patient",      icon: FaUserInjured },
   { to: "/doctor/followups",         label: "Follow-ups",       icon: FaCalendarAlt },
+  { to: "/doctor/camp-submissions",  label: "Camp Submissions", icon: FaClipboardList }, // ← NEW
   { to: "/doctor/appointments",      label: "Appointments",     icon: FaRegCalendarCheck },
   { to: "/doctor/analytics",         label: "Statistics",       icon: FaChartLine },
   { to: "/doctor/audit",             label: "Patient Logs",     icon: FaHistory },
-  { to: "/doctor/camp-submissions",  label: "Camp Submissions", icon: FaClipboardList }, // ← NEW
 ];
 
 const SIDEBAR_W = 320;

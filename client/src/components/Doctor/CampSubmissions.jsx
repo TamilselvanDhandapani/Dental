@@ -98,13 +98,13 @@ const SubmissionForm = ({
       email: email || null,
       phone: phone || null,
       institution: institution || null,
-      institutionType: institutionType || null, // backend accepts either snake or camel from our controller
+      institutionType: institutionType || null,
       comments: comments || null,
     };
 
     try {
       await onSubmit(payload);
-      // leave resetting to parent (esp. inside modal)
+      // leave resetting to parent
     } catch (e) {
       setErr(e?.message || "Failed to submit");
     }
@@ -294,7 +294,7 @@ const EditSubmissionModal = ({ open, onClose, onSaved, item }) => {
 };
 
 /* ----------------------------- Audit Panel ------------------------------- */
-
+/*  ✅ Only show logs where table_name === 'camp_submissions'  */
 const AuditLogsPanel = () => {
   const [items, setItems] = useState([]);
   const [limit, setLimit] = useState(25);
@@ -309,7 +309,11 @@ const AuditLogsPanel = () => {
     try {
       const action = actionOpt?.value === "All" ? undefined : ACTION_UI_TO_DB[actionOpt.value];
       const r = await getAuditRecent({ action, limit, offset });
-      setItems(Array.isArray(r?.items) ? r.items : []);
+      // Filter to camp submissions ONLY
+      const rows = (Array.isArray(r?.items) ? r.items : []).filter(
+        (ev) => ev?.table_name === "camp_submissions"
+      );
+      setItems(rows);
     } catch (e) {
       setErr(e?.message || "Failed to load logs");
       setItems([]);
@@ -328,6 +332,9 @@ const AuditLogsPanel = () => {
   return (
     <div className="space-y-4">
       <div className="bg-white p-4 rounded-xl border">
+        <div className="mb-2">
+          <h3 className="text-lg font-semibold">Camp Submissions — Audit Logs</h3>
+        </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs text-gray-600 mb-1">Show</label>
@@ -394,14 +401,14 @@ const AuditLogsPanel = () => {
                         {ACTION_DB_TO_UI[ev.action] || ev.action}
                       </span>
                       <span className="text-sm text-gray-700">
-                        {/* concise: e.g., "Patient", "Visit", or table name title-cased */}
-                        {ev.table_name
-                          ? ev.table_name.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase())
-                          : "Item"}
+                        Camp Submission
                       </span>
                     </div>
                     <div className="mt-1 text-xs text-gray-500">
-                      By <span className="font-medium text-gray-700">{ev.actor_email || ev.actor_id || "Unknown"}</span>
+                      By{" "}
+                      <span className="font-medium text-gray-700">
+                        {ev.actor_email || ev.actor_id || "Unknown"}
+                      </span>
                     </div>
                   </div>
                   <div className="text-right text-sm text-gray-800">{formatDateTime(ev.happened_at)}</div>
@@ -496,7 +503,6 @@ const CampSubmissions = () => {
     setCreating(true);
     try {
       await createCampSubmission(payload);
-      // move to list and refresh
       setTab("list");
       setOffset(0);
       await loadList();
