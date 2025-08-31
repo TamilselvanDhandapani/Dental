@@ -1,33 +1,63 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../CreateClient';
 import { motion } from 'framer-motion';
-import { FaTooth, FaUser, FaLock, FaArrowRight } from 'react-icons/fa';
+import { FaUser, FaLock, FaArrowRight } from 'react-icons/fa';
 import { Link, useNavigate } from 'react-router-dom';
+import CreatableSelect from 'react-select/creatable';
 import 'aos/dist/aos.css';
-import GDC from "../assets/gdc.png"
+import GDC from "../assets/gdc.png";
 
 const isEmail = (v = '') => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 const API_BASE =
   (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) ||
   (typeof process !== 'undefined' && process.env && process.env.REACT_APP_API_URL) ||
-  ''; // e.g. '' if your server routes are proxied, else 'https://api.yourdomain.com'
+  '';
+
+const USERNAMES = [
+  "Natarajan","Kaviyaa","Swetha","Mythili","Premkumar","Vignesh",
+  "Srinath","Venkatesh","Kesavaraj","Yokesh",
+];
+const USER_OPTIONS = USERNAMES.map(n => ({ value: n, label: n }));
+
+const selectStyles = {
+  control: (base, state) => ({
+    ...base,
+    borderColor: state.isFocused ? '#14b8a6' : '#d1d5db',
+    boxShadow: state.isFocused ? '0 0 0 2px rgba(20,184,166,0.2)' : 'none',
+    '&:hover': { borderColor: state.isFocused ? '#14b8a6' : '#9ca3af' },
+    minHeight: 48,
+    paddingLeft: 36,
+    borderRadius: 8,
+  }),
+  valueContainer: (base) => ({ ...base, padding: '0 8px' }),
+  input: (base) => ({ ...base, margin: 0, padding: 0 }),
+  placeholder: (base) => ({ ...base, color: '#9ca3af' }),
+  option: (base, state) => ({
+    ...base,
+    backgroundColor: state.isFocused ? '#ecfeff' : 'white',
+    color: '#111827',
+  }),
+  menu: (base) => ({ ...base, zIndex: 50 }),
+};
+
+// 🔐 Safe JSON reader: never throws if the body is empty or not JSON
+async function readJsonSafe(res) {
+  const text = await res.text().catch(() => '');
+  if (!text) return {};
+  try { return JSON.parse(text); } catch { return { raw: text }; }
+}
 
 const Login = () => {
-  const [form, setForm] = useState({
-    identifier: '', // username OR email
-    password: ''
-  });
+  const [form, setForm] = useState({ identifier: '', password: '' });
   const [msg, setMsg] = useState({ text: '', type: '' });
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Check if user is already logged in
   useEffect(() => {
-    const checkSession = async () => {
+    (async () => {
       const { data: { session } } = await supabase.auth.getSession();
       if (session) navigate('/doctor');
-    };
-    checkSession();
+    })();
   }, [navigate]);
 
   const onSubmit = async (e) => {
@@ -46,24 +76,37 @@ const Login = () => {
 
     try {
       if (isEmail(identifier)) {
-        // Email path: sign in directly with Supabase
+        // Email path uses Supabase directly
         const { error } = await supabase.auth.signInWithPassword({
           email: identifier.toLowerCase(),
           password
         });
         if (error) throw error;
       } else {
-        // Username path: call backend, then set Supabase session on the client
+        // Username path hits your backend and parses response safely
         const res = await fetch(`${API_BASE}/login`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
           body: JSON.stringify({ username: identifier, password })
         });
-        const json = await res.json();
-        if (!res.ok) throw new Error(json.msg || 'Login failed');
 
-        const { token, refresh_token } = json;
+        const payload = await readJsonSafe(res); // ← safe parse (no JSON error)
+        if (!res.ok) {
+          const errMsg =
+            payload.msg ||
+            payload.error ||
+            payload.message ||
+            payload.raw ||
+            `Login failed (HTTP ${res.status})`;
+          throw new Error(errMsg);
+        }
+
+        const { token, refresh_token } = payload;
         if (!token || !refresh_token) {
+          console.error('Login response payload:', payload);
           throw new Error('Invalid auth response from server.');
         }
 
@@ -76,10 +119,8 @@ const Login = () => {
 
       navigate('/doctor');
     } catch (error) {
-      setMsg({
-        text: error.message || 'Login failed. Please try again.',
-        type: 'error'
-      });
+      setMsg({ text: error.message || 'Login failed. Please try again.', type: 'error' });
+      console.error('Login error:', error);
     } finally {
       setIsLoading(false);
     }
@@ -87,19 +128,11 @@ const Login = () => {
 
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: { staggerChildren: 0.1, delayChildren: 0.2 },
-    },
+    visible: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.2 } },
   };
-
   const itemVariants = {
     hidden: { y: 20, opacity: 0 },
-    visible: {
-      y: 0,
-      opacity: 1,
-      transition: { type: 'spring', stiffness: 100 }
-    },
+    visible: { y: 0, opacity: 1, transition: { type: 'spring', stiffness: 100 } },
   };
 
   return (
@@ -122,21 +155,31 @@ const Login = () => {
         </div>
 
         <div className="space-y-4">
-          {/* Username or Email */}
+          {/* Username (choose) or type email/username */}
           <motion.div variants={itemVariants}>
-            <label className="block text-gray-700 mb-2">Username or Email</label>
+            <label htmlFor="identifier" className="block text-gray-700 mb-2">
+              Username or Email
+            </label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <FaUser className="text-gray-400" />
               </div>
-              <input
-                placeholder="username or name@email.com"
-                type="text"
-                required
-                value={form.identifier}
-                onChange={(e) => setForm({ ...form, identifier: e.target.value })}
-                className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
-                autoComplete="username"
+              <CreatableSelect
+                inputId="identifier"
+                classNamePrefix="rs"
+                styles={selectStyles}
+                isClearable
+                isSearchable
+                options={USER_OPTIONS}
+                placeholder="Select a username or type email"
+                value={form.identifier ? { value: form.identifier, label: form.identifier } : null}
+                onChange={(opt) => setForm({ ...form, identifier: opt?.value || '' })}
+                onInputChange={(inputVal, action) => {
+                  if (action.action === 'input-change') {
+                    setForm((f) => ({ ...f, identifier: inputVal }));
+                  }
+                }}
+                menuPortalTarget={typeof document !== 'undefined' ? document.body : null}
               />
             </div>
           </motion.div>
@@ -189,10 +232,7 @@ const Login = () => {
 
         {/* Forgot Password Link */}
         <motion.div variants={itemVariants} className="mt-4 text-center">
-          <Link
-            to="/forgot-password"
-            className="text-teal-600 hover:text-teal-800 text-sm font-medium"
-          >
+          <Link to="/forgot-password" className="text-teal-600 hover:text-teal-800 text-sm font-medium">
             Forgot your password?
           </Link>
         </motion.div>
@@ -202,9 +242,7 @@ const Login = () => {
           <motion.div
             variants={itemVariants}
             className={`mt-4 p-3 rounded-lg text-center ${
-              msg.type === 'error'
-                ? 'bg-red-100 text-red-700'
-                : 'bg-teal-100 text-teal-700'
+              msg.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-teal-100 text-teal-700'
             }`}
           >
             {msg.text}
