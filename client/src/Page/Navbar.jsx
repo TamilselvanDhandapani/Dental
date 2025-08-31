@@ -46,7 +46,7 @@ const Navbar = ({ onMenuClick, menuOpen = false }) => {
           <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="flex items-center">
            
             <Link to="/doctor" className="ml-2 text-lg font-bold text-gray-900">
-              <img src={GDC} alt="Logo" className="w-16 h-16 inline-block mr-2" />
+              <img src={GDC} alt="Logo" className="w-24 h-18 inline-block mr-2" />
               
             </Link>
           </motion.div>
