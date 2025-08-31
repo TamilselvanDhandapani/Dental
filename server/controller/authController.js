@@ -86,54 +86,66 @@ const login = async (req, res) => {
   const { username, email, password } = req.body;
 
   try {
-    if (!password) {
-      return res.status(400).json({ msg: 'Password is required' });
-    }
+    if (!password) return res.status(400).json({ msg: 'Password is required' });
     if (!username && !email) {
       return res.status(400).json({ msg: 'Username or email is required' });
     }
 
-    // Resolve the identifier to an email address
+    // 1) Resolve identifier -> email
     let normalizedEmail = null;
-    if (email) {
-      const candidate = String(email).trim().toLowerCase();
-      if (!isValidEmail(candidate)) {
-        // allow username-like strings passed in "email" by mistake
-        // fall back to username lookup below
-      } else {
-        normalizedEmail = candidate;
-      }
+
+    const isValidEmail = (addr) =>
+      typeof addr === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr.trim());
+
+    if (email && isValidEmail(email)) {
+      normalizedEmail = String(email).trim().toLowerCase();
     }
 
     if (!normalizedEmail) {
-      // Username path (case-insensitive lookup)
-      const uname = String(username || email).trim(); // support accidental field mixup
-      if (!uname) {
-        return res.status(400).json({ msg: 'Username or email is required' });
-      }
+      const uname = String(username || email || '').trim();
+      if (!uname) return res.status(400).json({ msg: 'Username or email is required' });
 
-      // Use ADMIN client so this works regardless of RLS on public routes
-      const { data: row, error: userErr } = await supabaseAdmin
+      // Use ADMIN client; fetch up to 2 to detect duplicates
+      const { data: rows, error: userErr } = await supabaseAdmin
         .from('users')
-        .select('email, id, username')
-        .ilike('username', uname) // case-insensitive
-        .single();
+        .select('id, email, username')
+        .ilike('username', uname)   // case-insensitive exact match (no %)
+        .limit(2);
 
-      if (userErr || !row?.email) {
-        // Avoid leaking which part was wrong
+      if (userErr) {
+        // Log exact error server-side, keep client message generic
+        console.error('login: user lookup failed', { uname, error: userErr });
         return res.status(400).json({ msg: 'Invalid username/email or password' });
       }
-      normalizedEmail = String(row.email).trim().toLowerCase();
+
+      if (!rows || rows.length === 0) {
+        // Not found
+        return res.status(400).json({ msg: 'Invalid username/email or password' });
+      }
+      if (rows.length > 1) {
+        // Duplicate usernames => fail closed (and fix data)
+        console.error('login: duplicate username', { uname, rows });
+        return res.status(400).json({ msg: 'Duplicate username. Contact admin.' });
+      }
+
+      normalizedEmail = String(rows[0].email).trim().toLowerCase();
     }
 
-    // Perform the actual Auth sign-in via email/password
+    // 2) Try Auth sign-in via email/password
     const { data, error } = await supabasePublic.auth.signInWithPassword({
       email: normalizedEmail,
-      password,
+      password: String(password).trim(),
     });
-    if (error) return res.status(400).json({ msg: 'Invalid username/email or password' });
 
-    // Optionally fetch username for convenience
+    if (error) {
+      // Log for debugging; generic to client
+      console.warn('login: signInWithPassword failed', {
+        email: normalizedEmail, code: error.code, message: error.message
+      });
+      return res.status(400).json({ msg: 'Invalid username/email or password' });
+    }
+
+    // 3) (Optional) read username for convenience
     let profileUsername = null;
     try {
       const { data: profile } = await supabaseAdmin
@@ -155,9 +167,11 @@ const login = async (req, res) => {
       },
     });
   } catch (err) {
+    console.error('login: unhandled error', err);
     return res.status(500).json({ msg: 'Login failed', error: err.message });
   }
 };
+
 
 /**
  * VERIFY OTP — not needed in this flow, but kept for compatibility.
