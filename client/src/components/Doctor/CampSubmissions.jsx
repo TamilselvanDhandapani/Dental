@@ -8,7 +8,7 @@ import {
   updateCampSubmission,
   deleteCampSubmission,
   getAuditRecent,
-} from "../utils/api"; // adjust path if needed
+} from "../../utils/api"; // adjust path if needed
 
 /* ------------------------------- Helpers -------------------------------- */
 
