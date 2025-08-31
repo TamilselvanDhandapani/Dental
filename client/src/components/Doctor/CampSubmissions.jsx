@@ -18,8 +18,10 @@ const ACTION_UI_TO_DB = { Added: "INSERT", Edited: "UPDATE", Deleted: "DELETE" }
 const INST_TYPE_OPTIONS = [
   { value: "Hospital", label: "Hospital" },
   { value: "Clinic", label: "Clinic" },
-  { value: "School", label: "School" },
   { value: "College", label: "College" },
+  { value: "Company", label: "Company" },
+  { value: "Government", label: "Government" },
+  { value: "School", label: "School" },
   { value: "NGO", label: "NGO" },
   { value: "Other", label: "Other" },
 ];
