@@ -92,7 +92,7 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
   );
   const [asthma, setAsthma] = useState(initial.asthma || false);
   const [allergy, setAllergy] = useState(initial.allergy || false);
-  const [bleedingTendency, setBleedingTendency] = useState(initial.bleedingTendency || false);
+  const [bleedingDisorder, setBleedingDisorder] = useState(initial.bleedingDisorder || false);
   const [epilepsySeizure, setEpilepsySeizure] = useState(initial.epilepsySeizure || false);
   const [heartDisease, setHeartDisease] = useState(initial.heartDisease || false);
   const [hypHypertension, setHypHypertension] = useState(initial.hypHypertension || false);
@@ -130,7 +130,7 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
       artificialValvesPacemaker,
       asthma,
       allergy,
-      bleedingTendency,
+      bleedingDisorder,
       epilepsySeizure,
       heartDisease,
       hypHypertension,
@@ -148,7 +148,7 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
       artificialValvesPacemaker,
       asthma,
       allergy,
-      bleedingTendency,
+      bleedingDisorder,
       epilepsySeizure,
       heartDisease,
       hypHypertension,
@@ -273,7 +273,7 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
       );
       setAsthma(dp.asthma ?? initial.asthma ?? false);
       setAllergy(dp.allergy ?? initial.allergy ?? false);
-      setBleedingTendency(dp.bleedingTendency ?? initial.bleedingTendency ?? false);
+      setBleedingDisorder(dp.bleedingDisorder ?? initial.bleedingDisorder ?? false);
       setEpilepsySeizure(dp.epilepsySeizure ?? initial.epilepsySeizure ?? false);
       setHeartDisease(dp.heartDisease ?? initial.heartDisease ?? false);
       setHypHypertension(dp.hypHypertension ?? initial.hypHypertension ?? false);
@@ -354,7 +354,7 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
     setArtificialValvesPacemaker(false);
     setAsthma(false);
     setAllergy(false);
-    setBleedingTendency(false);
+    setBleedingDisorder(false);
     setEpilepsySeizure(false);
     setHeartDisease(false);
     setHypHypertension(false);
@@ -546,9 +546,9 @@ const MedicalHistoryForm = ({ patientId, initial = {}, onBack, onNext, onSave })
             <ToggleChip id="p3" label="Allergy" active={allergy} onClick={() => setAllergy((v) => !v)} />
             <ToggleChip
               id="p4"
-              label="Bleeding Tendency"
-              active={bleedingTendency}
-              onClick={() => setBleedingTendency((v) => !v)}
+              label="Bleeding Disorder"
+              active={bleedingDisorder}
+              onClick={() => setBleedingDisorder((v) => !v)}
             />
             <ToggleChip
               id="p5"

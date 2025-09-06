@@ -55,6 +55,15 @@ const badge = (a) =>
     ? "bg-rose-100 text-rose-700"
     : "bg-gray-100 text-gray-700";
 
+// Keep the phone as a clean 10-digit number in state
+const normalizePhone10 = (v) => {
+  const digits = String(v || "").replace(/\D/g, "");
+  return digits.length <= 10 ? digits : digits.slice(-10);
+};
+
+// Optional: pretty print for display only (does not change stored value)
+const formatPhone10 = (v) => (v ? String(v).replace(/(\d{5})(\d{5})/, "$1 $2") : "");
+
 // Custom styles for React Select
 const customSelectStyles = {
   control: (provided, state) => ({
@@ -93,7 +102,7 @@ const SubmissionForm = ({
   const [name, setName] = useState(initial?.name || "");
   const [dob, setDob] = useState(initial?.dob || "");
   const [email, setEmail] = useState(initial?.email || "");
-  const [phone, setPhone] = useState(initial?.phone || "");
+  const [phone, setPhone] = useState(normalizePhone10(initial?.phone));
   const [institution, setInstitution] = useState(initial?.institution || "");
   const [institutionType, setInstitutionType] = useState(
     initial?.institution_type || initial?.institutionType || ""
@@ -105,7 +114,7 @@ const SubmissionForm = ({
     setName(initial?.name || "");
     setDob(initial?.dob || "");
     setEmail(initial?.email || "");
-    setPhone(initial?.phone || "");
+    setPhone(normalizePhone10(initial?.phone));
     setInstitution(initial?.institution || "");
     setInstitutionType(initial?.institution_type || initial?.institutionType || "");
     setComments(initial?.comments || "");
@@ -119,6 +128,7 @@ const SubmissionForm = ({
     // Basic validation
     if (!name.trim()) return setErr("Name is required");
     if (email && !/^\S+@\S+\.\S+$/.test(email)) return setErr("Enter a valid email");
+    if (phone && phone.length !== 10) return setErr("Enter a 10-digit phone number");
 
     // Always send BOTH snake_case and camelCase for maximum backend compatibility.
     // Also normalize empty strings to null where appropriate.
@@ -129,7 +139,7 @@ const SubmissionForm = ({
       name: name.trim(),
       dob: safeDob,
       email: email || null,
-      phone: phone || null,
+      phone: phone || null, // already normalized to 10 digits
       comments: comments || null,
       institution: institution || null,
       institutionType: institutionType || null,
@@ -186,10 +196,14 @@ const SubmissionForm = ({
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
           <input
+            type="tel"
+            inputMode="numeric"
+            pattern="[0-9]{10}"
+            maxLength={10}
             className="w-full border border-gray-300 rounded-lg px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             value={phone || ""}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="9876543210"
+            onChange={(e) => setPhone(normalizePhone10(e.target.value))}
+            placeholder="10-digit mobile (e.g., 9876543210)"
           />
         </div>
         <div>
@@ -567,7 +581,7 @@ const MobileTableRow = ({ row, onEdit, onDelete }) => {
             <div className="text-gray-700">{row.dob || "—"}</div>
             
             <div className="text-gray-500">Phone:</div>
-            <div className="text-gray-700">{row.phone || "—"}</div>
+            <div className="text-gray-700">{formatPhone10(row.phone) || "—"}</div>
             
             <div className="text-gray-500">Institution:</div>
             <div className="text-gray-700">{row.institution || "—"}</div>
@@ -775,7 +789,7 @@ const CampSubmissions = () => {
                       {rows.map((r) => (
                         <MobileTableRow 
                           key={r.id} 
-                          row={r} 
+                          row={{ ...r, phone: normalizePhone10(r.phone) }}
                           onEdit={startEdit}
                           onDelete={confirmDelete}
                         />
@@ -821,7 +835,9 @@ const CampSubmissions = () => {
                             <td className="px-4 py-3 text-sm font-medium text-gray-900 max-w-xs truncate">{r.name}</td>
                             <td className="px-4 py-3 text-sm text-gray-500">{r.dob || "—"}</td>
                             <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{r.email || "—"}</td>
-                            <td className="px-4 py-3 text-sm text-gray-500">{r.phone || "—"}</td>
+                            <td className="px-4 py-3 text-sm text-gray-500">
+                              {formatPhone10(normalizePhone10(r.phone)) || "—"}
+                            </td>
                             <td className="px-4 py-3 text-sm text-gray-500 max-w-xs truncate">{r.institution || "—"}</td>
                             <td className="px-4 py-3 text-sm text-gray-500">{r.institution_type || r.institutionType || "—"}</td>
                             <td className="px-4 py-3 text-sm text-gray-500">{formatDateTime(r.created_at)}</td>

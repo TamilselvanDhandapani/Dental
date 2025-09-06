@@ -1,4 +1,3 @@
-// src/components/PatientProfileForm.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import Select from "react-select";
 import {
@@ -268,18 +267,20 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
     const e = {};
     if (!data.firstName) e.firstName = "First name is required";
     if (!data.lastName) e.lastName = "Last name is required";
-    if (!data.dob) {
-      e.dob = "Date of birth is required";
-    } else {
+
+    // DOB is NOT required; validate only if provided
+    if (data.dob) {
       const d = new Date(data.dob);
       const now = new Date();
       if (Number.isNaN(d.getTime())) e.dob = "Enter a valid date";
       else if (d > now) e.dob = "DOB cannot be in the future";
       else if (now.getFullYear() - d.getFullYear() > 120) e.dob = "DOB seems implausible";
     }
+
     if (!data.gender) e.gender = "Please select gender";
     if (!MOBILE_RE.test(String(data.phone || "")))
       e.phone = "Enter a valid 10-digit mobile (starts 6–9)";
+    // Email is NOT required; validate only if present
     if (data.email && !EMAIL_RE.test(data.email))
       e.email = "Enter a valid email";
     if (data.pincode && !PIN_RE.test(String(data.pincode)))
@@ -341,7 +342,7 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
     setTouched({
       firstName: true,
       lastName: true,
-      dob: true,
+      dob: true,        // touched, but no error if empty
       gender: true,
       phone: true,
       email: touched.email || false,
@@ -571,13 +572,12 @@ const PatientProfileForm = ({ initial = {}, onNext, onSave }) => {
         {/* DOB + Age + Gender */}
         <section className="grid gap-6 md:grid-cols-3">
           <div>
-            <Label htmlFor="dob" required>Date of Birth</Label>
+            <Label htmlFor="dob">Date of Birth</Label>
             <InputIconWrap icon={FaBirthdayCake}>
               <input
                 id="dob"
                 name="dob"
                 type="date"
-                required
                 value={dob}
                 max={MAX_DOB}
                 min={MIN_DOB}

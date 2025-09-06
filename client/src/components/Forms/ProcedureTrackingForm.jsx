@@ -1,13 +1,7 @@
 // src/components/ProcedureTrackingForm.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 
-/* =========================================================
-   ProcedureTrackingForm (NO backend writes on this step)
-   - Local draft autosave (localStorage)
-   - Inline per-row validation
-   - Cleaned payload passed to onSave/onNext
-   - Review step should POST/PUT to your API
-   ========================================================= */
+
 
 const DRAFT_KEY_BASE = "dental:procedureTracking";
 

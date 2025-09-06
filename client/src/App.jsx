@@ -60,7 +60,7 @@ const App = () => {
             }
           >
             {/* Patients is the index/start page */}
-            <Route index element={<Patients />} />
+            <Route index element={<AppointmentDashboard />} />
             <Route path="patients" element={<Patients />} />
             <Route path="patients/:id" element={<PatientDetail />} />
             <Route path="visits/:visitId" element={<VisitDetail />} />

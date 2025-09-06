@@ -10,11 +10,13 @@ const gradeOptions = ["A", "B", "C", "D", "E"];
 const statusOptions = [
   "Intact",
   "Caries",
-  "Filled",
+  "Filling",
   "Missing",
   "Crown",
   "Fractured",
   "Root Canal Treated",
+  "Implant",
+  "Root Stem"
 ];
 
 const getColorClass = (grade) => {
