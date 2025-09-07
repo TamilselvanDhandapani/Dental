@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "../../CreateClient";
+import { supabase } from "../../CreateClient"; 
 import GDC from "../../assets/gdc.png"; // make sure the file exists at src/assets/gdc.png
 
 // Icons
@@ -13,11 +13,11 @@ import { FaRegCalendarCheck } from "react-icons/fa6";
 
 /* --------------------------- Nav Items (Left Sidebar) --------------------------- */
 const navItems = [
+  { to: "/doctor/appointments",      label: "Appointments",     icon: FaRegCalendarCheck },
   { to: "/doctor",                   label: "Patients",         icon: FaUserFriends, exact: true },
   { to: "/doctor/form",              label: "New Patient",      icon: FaUserInjured },
   { to: "/doctor/followups",         label: "Follow-ups",       icon: FaCalendarAlt },
   { to: "/doctor/camp-submissions",  label: "Camp Submissions", icon: FaClipboardList }, // ← NEW
-  { to: "/doctor/appointments",      label: "Appointments",     icon: FaRegCalendarCheck },
   { to: "/doctor/analytics",         label: "Statistics",       icon: FaChartLine },
   { to: "/doctor/audit",             label: "Patient Logs",     icon: FaHistory },
 ];
