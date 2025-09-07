@@ -13,8 +13,8 @@ import { FaRegCalendarCheck } from "react-icons/fa6";
 
 /* --------------------------- Nav Items (Left Sidebar) --------------------------- */
 const navItems = [
-  { to: "/doctor/appointments",      label: "Appointments",     icon: FaRegCalendarCheck },
-  { to: "/doctor",                   label: "Patients",         icon: FaUserFriends, exact: true },
+  { to: "/doctor",                   label: "Appointments",     icon: FaRegCalendarCheck ,exact: true  },
+  { to: "/doctor/patients",          label: "Patients",         icon: FaUserFriends, },
   { to: "/doctor/form",              label: "New Patient",      icon: FaUserInjured },
   { to: "/doctor/followups",         label: "Follow-ups",       icon: FaCalendarAlt },
   { to: "/doctor/camp-submissions",  label: "Camp Submissions", icon: FaClipboardList }, // ← NEW
