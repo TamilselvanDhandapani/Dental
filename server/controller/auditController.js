@@ -2,6 +2,13 @@
 require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 
+/** Which table/view to hit:
+ *  - If you exposed the `audit` schema:   AUDIT_TABLE=audit.event_log
+ *  - If you created a public view:        AUDIT_TABLE=audit_event_log
+ *  (Both work; we’ll also auto-fallback to the view if the schema isn’t exposed.)
+ */
+const AUDIT_TABLE = process.env.AUDIT_TABLE || process.env.AUDIT_SOURCE || 'audit.event_log';
+
 /** Supabase client bound to the caller's JWT (Authorization header). */
 const supabaseForReq = (req) =>
   createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY, {
@@ -18,6 +25,24 @@ const getLimitOffset = (req, defLimit = 50, maxLimit = 200) => {
   return { limit, offset, range: [offset, offset + limit - 1] };
 };
 
+/** Helper: run a query builder against AUDIT_TABLE, fall back to public view if needed. */
+async function execAuditQuery(supabase, build) {
+  // Primary: env-provided (default audit.event_log)
+  const primary = build(supabase.from(AUDIT_TABLE));
+  let { data, error } = await primary;
+
+  // If table isn’t exposed or doesn’t exist, try the conventional public view
+  const looksLikeExposureError =
+    error && /not found|does not exist|schema|cache|relation/i.test(error.message || '');
+
+  if (looksLikeExposureError && AUDIT_TABLE === 'audit.event_log') {
+    const fallback = build(supabase.from('audit_event_log'));
+    const { data: data2, error: err2 } = await fallback;
+    return { data: data2, error: err2 };
+  }
+  return { data, error };
+}
+
 /**
  * GET /audit/recent?table_schema=public&table_name=patients&action=UPDATE&limit=50&offset=0
  * Recent audit events (optionally filtered by schema/table/action).
@@ -25,24 +50,22 @@ const getLimitOffset = (req, defLimit = 50, maxLimit = 200) => {
 const getAuditRecent = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
-    if (!req.headers.authorization) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!req.headers.authorization) return res.status(401).json({ error: 'Unauthorized' });
 
     const { limit, range } = getLimitOffset(req);
     const { table_schema, table_name, action } = req.query;
 
-    let q = supabase
-      .from('audit.event_log')
-      .select('*')
-      .order('happened_at', { ascending: false })
-      .range(range[0], range[1]);
+    const { data, error } = await execAuditQuery(supabase, (tbl) => {
+      let q = tbl.select('*')
+        .order('happened_at', { ascending: false })
+        .range(range[0], range[1]);
 
-    if (table_schema) q = q.eq('table_schema', String(table_schema));
-    if (table_name)  q = q.eq('table_name', String(table_name));
-    if (action)      q = q.eq('action', String(action).toUpperCase());
+      if (table_schema) q = q.eq('table_schema', String(table_schema));
+      if (table_name)  q = q.eq('table_name', String(table_name));
+      if (action)      q = q.eq('action', String(action).toUpperCase());
+      return q;
+    });
 
-    const { data, error } = await q;
     if (error) return sbError(res, error);
     return res.json({ limit, items: data || [] });
   } catch (err) {
@@ -57,21 +80,19 @@ const getAuditRecent = async (req, res) => {
 const getPatientAudit = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
-    if (!req.headers.authorization) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!req.headers.authorization) return res.status(401).json({ error: 'Unauthorized' });
 
     const { id } = req.params;
     const { limit, range } = getLimitOffset(req, 100);
 
-    const { data, error } = await supabase
-      .from('audit.event_log')
-      .select('*')
-      .eq('table_schema', 'public')
-      .eq('table_name', 'patients')
-      .eq('row_id', String(id))
-      .order('happened_at', { ascending: false })
-      .range(range[0], range[1]);
+    const { data, error } = await execAuditQuery(supabase, (tbl) =>
+      tbl.select('*')
+        .eq('table_schema', 'public')
+        .eq('table_name', 'patients')
+        .eq('row_id', String(id))
+        .order('happened_at', { ascending: false })
+        .range(range[0], range[1])
+    );
 
     if (error) return sbError(res, error);
     return res.json({ patientId: id, limit, items: data || [] });
@@ -87,19 +108,17 @@ const getPatientAudit = async (req, res) => {
 const getActorAudit = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
-    if (!req.headers.authorization) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!req.headers.authorization) return res.status(401).json({ error: 'Unauthorized' });
 
     const { actorId } = req.params;
     const { limit, range } = getLimitOffset(req);
 
-    const { data, error } = await supabase
-      .from('audit.event_log')
-      .select('*')
-      .eq('actor_id', String(actorId))
-      .order('happened_at', { ascending: false })
-      .range(range[0], range[1]);
+    const { data, error } = await execAuditQuery(supabase, (tbl) =>
+      tbl.select('*')
+        .eq('actor_id', String(actorId))
+        .order('happened_at', { ascending: false })
+        .range(range[0], range[1])
+    );
 
     if (error) return sbError(res, error);
     return res.json({ actorId, limit, items: data || [] });
@@ -115,21 +134,19 @@ const getActorAudit = async (req, res) => {
 const getRowAudit = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
-    if (!req.headers.authorization) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!req.headers.authorization) return res.status(401).json({ error: 'Unauthorized' });
 
     const { schema, table, rowId } = req.params;
     const { limit, range } = getLimitOffset(req, 100);
 
-    const { data, error } = await supabase
-      .from('audit.event_log')
-      .select('*')
-      .eq('table_schema', String(schema))
-      .eq('table_name', String(table))
-      .eq('row_id', String(rowId))
-      .order('happened_at', { ascending: false })
-      .range(range[0], range[1]);
+    const { data, error } = await execAuditQuery(supabase, (tbl) =>
+      tbl.select('*')
+        .eq('table_schema', String(schema))
+        .eq('table_name', String(table))
+        .eq('row_id', String(rowId))
+        .order('happened_at', { ascending: false })
+        .range(range[0], range[1])
+    );
 
     if (error) return sbError(res, error);
     return res.json({ schema, table, rowId, limit, items: data || [] });
@@ -145,9 +162,7 @@ const getRowAudit = async (req, res) => {
 const getPatientProvenance = async (req, res) => {
   try {
     const supabase = supabaseForReq(req);
-    if (!req.headers.authorization) {
-      return res.status(401).json({ error: 'Unauthorized' });
-    }
+    if (!req.headers.authorization) return res.status(401).json({ error: 'Unauthorized' });
 
     const { id } = req.params;
 
@@ -160,26 +175,26 @@ const getPatientProvenance = async (req, res) => {
     if (pErr) return sbError(res, pErr);
 
     // First INSERT and latest UPDATE/DELETE from audit
-    const { data: firstInsert, error: fErr } = await supabase
-      .from('audit.event_log')
-      .select('*')
-      .eq('table_schema', 'public')
-      .eq('table_name', 'patients')
-      .eq('row_id', String(id))
-      .eq('action', 'INSERT')
-      .order('happened_at', { ascending: true })
-      .limit(1);
+    const { data: firstInsert, error: fErr } = await execAuditQuery(supabase, (tbl) =>
+      tbl.select('*')
+        .eq('table_schema', 'public')
+        .eq('table_name', 'patients')
+        .eq('row_id', String(id))
+        .eq('action', 'INSERT')
+        .order('happened_at', { ascending: true })
+        .limit(1)
+    );
     if (fErr) return sbError(res, fErr);
 
-    const { data: lastChange, error: lErr } = await supabase
-      .from('audit.event_log')
-      .select('*')
-      .eq('table_schema', 'public')
-      .eq('table_name', 'patients')
-      .eq('row_id', String(id))
-      .in('action', ['UPDATE', 'DELETE'])
-      .order('happened_at', { ascending: false })
-      .limit(1);
+    const { data: lastChange, error: lErr } = await execAuditQuery(supabase, (tbl) =>
+      tbl.select('*')
+        .eq('table_schema', 'public')
+        .eq('table_name', 'patients')
+        .eq('row_id', String(id))
+        .in('action', ['UPDATE', 'DELETE'])
+        .order('happened_at', { ascending: false })
+        .limit(1)
+    );
     if (lErr) return sbError(res, lErr);
 
     return res.json({
@@ -187,8 +202,8 @@ const getPatientProvenance = async (req, res) => {
       row: patient,
       createdByFromRow: patient?.created_by || null,
       updatedByFromRow: patient?.updated_by || null,
-      firstInsert: firstInsert?.[0] || null,
-      lastChange: lastChange?.[0] || null,
+      firstInsert: (firstInsert && firstInsert[0]) || null,
+      lastChange: (lastChange && lastChange[0]) || null,
     });
   } catch (err) {
     return sbError(res, err, 500);
