@@ -7,7 +7,7 @@ const { createClient } = require('@supabase/supabase-js');
  *  - If you created a public view:        AUDIT_TABLE=audit_event_log
  *  (Both work; we’ll also auto-fallback to the view if the schema isn’t exposed.)
  */
-const AUDIT_TABLE = process.env.AUDIT_TABLE || process.env.AUDIT_SOURCE || 'audit.event_log';
+const AUDIT_TABLE = process.env.AUDIT_TABLE || process.env.AUDIT_SOURCE || 'audit_event_log';
 
 /** Supabase client bound to the caller's JWT (Authorization header). */
 const supabaseForReq = (req) =>
