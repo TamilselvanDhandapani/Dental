@@ -1,3 +1,4 @@
+// src/pages/Login.jsx (dark theme with user icon inside Username field)
 import { useState, useEffect } from 'react';
 import { supabase } from '../CreateClient';
 import { motion } from 'framer-motion';
@@ -19,28 +20,52 @@ const USERNAMES = [
 ];
 const USER_OPTIONS = USERNAMES.map(n => ({ value: n, label: n }));
 
+/* ------------------------ React-Select dark styles ----------------------- */
+/* Matches the screenshot vibe: dark input with pink focus-ring and space for a left icon */
 const selectStyles = {
   control: (base, state) => ({
     ...base,
-    borderColor: state.isFocused ? '#14b8a6' : '#d1d5db',
-    boxShadow: state.isFocused ? '0 0 0 2px rgba(20,184,166,0.2)' : 'none',
-    '&:hover': { borderColor: state.isFocused ? '#14b8a6' : '#9ca3af' },
+    backgroundColor: '#0b1220',               // slate-950-ish
+    borderColor: state.isFocused ? '#f43f5e' : '#334155', // ring-rose-500 on focus, slate-700 otherwise
+    boxShadow: state.isFocused ? '0 0 0 2px rgba(244,63,94,0.35)' : 'none',
+    '&:hover': { borderColor: state.isFocused ? '#f43f5e' : '#475569' },
     minHeight: 48,
-    paddingLeft: 36,
-    borderRadius: 8,
+    paddingLeft: 44,                           // ← room for the user icon
+    borderRadius: 10,
+    color: '#e5e7eb',
   }),
-  valueContainer: (base) => ({ ...base, padding: '0 8px' }),
-  input: (base) => ({ ...base, margin: 0, padding: 0 }),
-  placeholder: (base) => ({ ...base, color: '#9ca3af' }),
+  valueContainer: (base) => ({ ...base, padding: '0 10px', color: '#e5e7eb' }),
+  input: (base) => ({ ...base, color: '#e5e7eb', margin: 0, padding: 0 }),
+  singleValue: (base) => ({ ...base, color: '#e5e7eb' }),
+  placeholder: (base) => ({ ...base, color: '#94a3b8' }),
+  dropdownIndicator: (base, state) => ({
+    ...base,
+    color: state.isFocused ? '#e5e7eb' : '#94a3b8',
+    '&:hover': { color: '#e5e7eb' },
+  }),
+  clearIndicator: (base) => ({ ...base, color: '#94a3b8', '&:hover': { color: '#e5e7eb' } }),
+  indicatorSeparator: (base) => ({ ...base, backgroundColor: '#475569' }),
+  menu: (base) => ({
+    ...base,
+    zIndex: 50,
+    backgroundColor: '#0b1220',
+    border: '1px solid #334155',
+    overflow: 'hidden',
+  }),
   option: (base, state) => ({
     ...base,
-    backgroundColor: state.isFocused ? '#ecfeff' : 'white',
-    color: '#111827',
+    backgroundColor: state.isSelected
+      ? '#f43f5e'
+      : state.isFocused
+      ? '#1f2937'
+      : '#0b1220',
+    color: state.isSelected ? '#ffffff' : '#e5e7eb',
+    ':active': { backgroundColor: state.isSelected ? '#f43f5e' : '#111827' },
+    cursor: 'pointer',
   }),
-  menu: (base) => ({ ...base, zIndex: 50 }),
 };
 
-// 🔐 Safe JSON reader: never throws if the body is empty or not JSON
+/* ----------------------------- Safe JSON read ---------------------------- */
 async function readJsonSafe(res) {
   const text = await res.text().catch(() => '');
   if (!text) return {};
@@ -76,47 +101,30 @@ const Login = () => {
 
     try {
       if (isEmail(identifier)) {
-        // Email path uses Supabase directly
         const { error } = await supabase.auth.signInWithPassword({
           email: identifier.toLowerCase(),
           password
         });
         if (error) throw error;
       } else {
-        // Username path hits your backend and parses response safely
         const res = await fetch(`${API_BASE}/login`, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
           body: JSON.stringify({ username: identifier, password })
         });
-
-        const payload = await readJsonSafe(res); // ← safe parse (no JSON error)
+        const payload = await readJsonSafe(res);
         if (!res.ok) {
-          const errMsg =
-            payload.msg ||
-            payload.error ||
-            payload.message ||
-            payload.raw ||
-            `Login failed (HTTP ${res.status})`;
+          const errMsg = payload.msg || payload.error || payload.message || payload.raw || `Login failed (HTTP ${res.status})`;
           throw new Error(errMsg);
         }
-
         const { token, refresh_token } = payload;
-        if (!token || !refresh_token) {
-          console.error('Login response payload:', payload);
-          throw new Error('Invalid auth response from server.');
-        }
-
+        if (!token || !refresh_token) throw new Error('Invalid auth response from server.');
         const { error: setErr } = await supabase.auth.setSession({
           access_token: token,
           refresh_token
         });
         if (setErr) throw setErr;
       }
-
       navigate('/doctor');
     } catch (error) {
       setMsg({ text: error.message || 'Login failed. Please try again.', type: 'error' });
@@ -140,33 +148,33 @@ const Login = () => {
       initial="hidden"
       animate="visible"
       variants={containerVariants}
-      className="min-h-screen bg-gradient-to-br from-blue-50 to-teal-50 flex items-center justify-center"
+      className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-black flex items-center justify-center px-4"
     >
       <motion.form
         onSubmit={onSubmit}
         variants={itemVariants}
-        data-aos="fade-up"
-        className="bg-white p-8 rounded-xl shadow-lg max-w-md w-full"
+        className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 backdrop-blur p-8 shadow-2xl"
       >
         <div className="flex flex-col items-center mb-6">
-          <img src={GDC} alt="Logo" className="mb-2 w-32 h-24" />
-          <h2 className="text-2xl font-bold text-gray-800">Welcome Back</h2>
-          <p className="text-gray-500 mt-1">Sign in to your dental account</p>
+          <img src={GDC} alt="Logo" className="mb-3 w-28 h-20 opacity-90" />
+          <h2 className="text-2xl font-bold text-slate-100">Welcome Back</h2>
+          <p className="text-slate-400 mt-1">Sign in to your dental account</p>
         </div>
 
-        <div className="space-y-4">
-          {/* Username (choose) or type email/username */}
+        <div className="space-y-5">
+          {/* Username / Email - with USER ICON inside the field */}
           <motion.div variants={itemVariants}>
-            <label htmlFor="identifier" className="block text-gray-700 mb-2">
-              Username or Email
+            <label htmlFor="identifier" className="block text-slate-300 mb-2">
+              Username or email
             </label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <FaUser className="text-gray-400" />
+              {/* Icon */}
+              <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
+                <FaUser className="text-slate-400" />
               </div>
               <CreatableSelect
                 inputId="identifier"
-                classNamePrefix="rs"
+                classNamePrefix="rs-dark"
                 styles={selectStyles}
                 isClearable
                 isSearchable
@@ -186,10 +194,10 @@ const Login = () => {
 
           {/* Password */}
           <motion.div variants={itemVariants}>
-            <label className="block text-gray-700 mb-2">Password</label>
+            <label className="block text-slate-300 mb-2">Password</label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <FaLock className="text-gray-400" />
+              <div className="pointer-events-none absolute inset-y-0 left-0 pl-3 flex items-center">
+                <FaLock className="text-slate-400" />
               </div>
               <input
                 placeholder="Enter your password"
@@ -197,7 +205,7 @@ const Login = () => {
                 required
                 value={form.password}
                 onChange={(e) => setForm({ ...form, password: e.target.value })}
-                className="w-full pl-10 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-teal-500 focus:border-teal-500 focus:outline-none transition"
+                className="w-full pl-10 pr-3 py-3 rounded-lg bg-slate-900 text-slate-100 placeholder-slate-500 border border-slate-700 focus:outline-none focus:border-rose-500 focus:ring-2 focus:ring-rose-500/40 transition"
                 autoComplete="current-password"
               />
             </div>
@@ -211,9 +219,8 @@ const Login = () => {
           whileTap={{ scale: 0.98 }}
           type="submit"
           disabled={isLoading}
-          className={`w-full mt-6 py-3 rounded-lg font-semibold text-white transition-colors shadow-md flex items-center justify-center ${
-            isLoading ? 'bg-teal-400' : 'bg-teal-600 hover:bg-teal-700'
-          }`}
+          className={`w-full mt-7 py-3 rounded-lg font-semibold text-white shadow-lg flex items-center justify-center
+            ${isLoading ? 'bg-rose-400' : 'bg-rose-600 hover:bg-rose-700'} transition-colors`}
         >
           {isLoading ? (
             <span className="flex items-center">
@@ -230,10 +237,14 @@ const Login = () => {
           )}
         </motion.button>
 
-        {/* Forgot Password Link */}
-        <motion.div variants={itemVariants} className="mt-4 text-center">
-          <Link to="/forgot-password" className="text-teal-600 hover:text-teal-800 text-sm font-medium">
-            Forgot your password?
+        {/* Footer actions */}
+        <motion.div variants={itemVariants} className="mt-4 flex items-center justify-between text-sm">
+          <label className="inline-flex items-center text-slate-400 select-none">
+            <input type="checkbox" className="mr-2 h-4 w-4 rounded border-slate-600 bg-slate-900 text-rose-600 focus:ring-rose-500" />
+            remember me
+          </label>
+          <Link to="/forgot-password" className="text-rose-400 hover:text-rose-300 font-medium">
+            forgot password
           </Link>
         </motion.div>
 
@@ -242,7 +253,7 @@ const Login = () => {
           <motion.div
             variants={itemVariants}
             className={`mt-4 p-3 rounded-lg text-center ${
-              msg.type === 'error' ? 'bg-red-100 text-red-700' : 'bg-teal-100 text-teal-700'
+              msg.type === 'error' ? 'bg-rose-950/50 text-rose-300 border border-rose-900' : 'bg-emerald-950/40 text-emerald-300 border border-emerald-900'
             }`}
           >
             {msg.text}
